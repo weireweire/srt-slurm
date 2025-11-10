@@ -3,8 +3,12 @@ Parser module for benchmark logs - adapted from parse.py
 """
 
 import json
+import logging
 import os
 import re
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 def extract_job_id(dirname: str) -> int:
@@ -19,6 +23,40 @@ def extract_job_id(dirname: str) -> int:
         return int(dirname.split("_")[0])
     except (ValueError, IndexError):
         return -1
+
+
+def read_job_metadata(run_path: str) -> dict | None:
+    """Read {jobid}.json metadata file if it exists.
+
+    This file contains structured metadata that was previously parsed from logs.
+    Format: {jobid}.json where jobid is extracted from the directory name.
+
+    Example: For directory "3667_1P_1D_20251110_192145", looks for "3667.json"
+
+    Args:
+        run_path: Path to the run directory
+
+    Returns:
+        Parsed JSON metadata dict or None if file doesn't exist or has errors
+    """
+    dirname = os.path.basename(run_path)
+    job_id = dirname.split("_")[0]
+    json_path = os.path.join(run_path, f"{job_id}.json")
+
+    if os.path.exists(json_path):
+        try:
+            with open(json_path) as f:
+                metadata = json.load(f)
+                logger.info(
+                    f"✅ Using metadata JSON for job {job_id} - no legacy parsing needed!"
+                )
+                return metadata
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse metadata JSON at {json_path}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to read metadata JSON at {json_path}: {e}")
+
+    return None
 
 
 def analyze_sgl_out(folder: str) -> dict:
@@ -226,13 +264,16 @@ def parse_container_image(run_path: str) -> str | None:
 
 
 def analyze_run(path: str) -> dict:
-    """Analyze a single benchmark run directory."""
+    """Analyze a single benchmark run directory.
+
+    Tries to read metadata from {jobid}.json first (new format).
+    Falls back to legacy parsing from log files if JSON doesn't exist.
+    """
+    dirname = os.path.basename(path)
     files = os.listdir(path)
 
-    prefill_nodes, decode_nodes, frontends = count_nodes_and_gpus(path)
-
+    # Parse profiler results (always needed - comes from actual benchmark output files)
     profile_result = {}
-
     for file in files:
         profiler_match = re.match(r"(sglang|vllm|gap)_isl_([0-9]+)_osl_([0-9]+)", file)
         if profiler_match:
@@ -248,50 +289,129 @@ def analyze_run(path: str) -> dict:
             profile_result["isl"] = isl
             profile_result["osl"] = osl
 
-    # Extract date from directory name
-    dirname = os.path.basename(path)
-    run_date = parse_run_date(dirname)
+    # Try to read metadata JSON first (NEW FORMAT)
+    metadata = read_job_metadata(path)
 
-    # Extract topology from directory name (XP_YD)
-    prefill_workers, decode_workers = parse_topology_from_dirname(dirname)
+    if metadata:
+        # Use metadata from JSON - fast path!
+        run_metadata = metadata.get("run_metadata", {})
+        profiler_metadata = metadata.get("profiler_metadata", {})
 
-    # Extract container image from log files
-    container = parse_container_image(path)
+        # Format run_date to match legacy format (YYYYMMDD_HHMMSS -> YYYY-MM-DD HH:MM:SS)
+        raw_date = run_metadata.get("run_date", "")
+        formatted_date = parse_run_date(f"__{raw_date}") if raw_date else None
 
-    config = {"slurm_job_id": dirname, "path": path, "run_date": run_date, "container": container}
+        config = {
+            "slurm_job_id": dirname,
+            "path": path,
+            "run_date": formatted_date,
+            "container": run_metadata.get("container"),
+            # Use prefill_nodes/decode_nodes for topology (total node count)
+            # Note: prefill_workers/decode_workers are workers-per-node
+            "prefill_dp": run_metadata.get("prefill_nodes") or run_metadata.get("prefill_workers"),
+            "decode_dp": run_metadata.get("decode_nodes") or run_metadata.get("decode_workers"),
+        }
 
-    # Use topology from folder name if available, otherwise fall back to counting files
-    if prefill_workers is not None:
-        config["prefill_dp"] = prefill_workers
-    elif len(prefill_nodes.values()) != 0:
-        config["prefill_dp"] = len(prefill_nodes.keys())
+        # Override profiler metadata if present in JSON
+        if profiler_metadata:
+            if "type" in profiler_metadata:
+                profile_result["profiler_type"] = profiler_metadata["type"]
+            if "isl" in profiler_metadata:
+                profile_result["isl"] = profiler_metadata["isl"]
+            if "osl" in profiler_metadata:
+                profile_result["osl"] = profiler_metadata["osl"]
 
-    if decode_workers is not None:
-        config["decode_dp"] = decode_workers
-    elif len(decode_nodes.values()) != 0:
-        config["decode_dp"] = len(decode_nodes.keys())
+        # Compute TP from file counts (still needed for GPU total calculations)
+        prefill_nodes, decode_nodes, frontends = count_nodes_and_gpus(path)
 
-    # Still compute TP from files
-    if len(prefill_nodes.values()) != 0:
-        config["prefill_tp"] = len(list(prefill_nodes.values())[0]) * 4
+        if len(prefill_nodes.values()) != 0:
+            config["prefill_tp"] = len(list(prefill_nodes.values())[0]) * 4
 
-    if len(decode_nodes.values()) != 0:
-        config["decode_tp"] = len(list(decode_nodes.values())[0]) * 4
+        if len(decode_nodes.values()) != 0:
+            config["decode_tp"] = len(list(decode_nodes.values())[0]) * 4
 
-    if len(frontends) != 0:
-        config["frontends"] = len(frontends)
+        if len(frontends) != 0:
+            config["frontends"] = len(frontends)
+
+    else:
+        # LEGACY PARSING PATH - This should be phased out!
+        logger.warning(
+            "━" * 80
+            + "\n"
+            + f"⚠️  USING LEGACY PARSING for job {dirname}\n"
+            + f"⚠️  No metadata JSON file found at: {os.path.join(path, dirname.split('_')[0] + '.json')}\n"
+            + "⚠️  This is SLOW and requires parsing log files with regex!\n"
+            + "⚠️  Please ensure future jobs generate the {jobid}.json metadata file.\n"
+            + "━" * 80
+        )
+
+        prefill_nodes, decode_nodes, frontends = count_nodes_and_gpus(path)
+
+        # Extract date from directory name
+        run_date = parse_run_date(dirname)
+
+        # Extract topology from directory name (XP_YD)
+        prefill_workers, decode_workers = parse_topology_from_dirname(dirname)
+
+        # Extract container image from log files
+        container = parse_container_image(path)
+
+        config = {"slurm_job_id": dirname, "path": path, "run_date": run_date, "container": container}
+
+        # Use topology from folder name if available, otherwise fall back to counting files
+        if prefill_workers is not None:
+            config["prefill_dp"] = prefill_workers
+        elif len(prefill_nodes.values()) != 0:
+            config["prefill_dp"] = len(prefill_nodes.keys())
+
+        if decode_workers is not None:
+            config["decode_dp"] = decode_workers
+        elif len(decode_nodes.values()) != 0:
+            config["decode_dp"] = len(decode_nodes.keys())
+
+        # Still compute TP from files
+        if len(prefill_nodes.values()) != 0:
+            config["prefill_tp"] = len(list(prefill_nodes.values())[0]) * 4
+
+        if len(decode_nodes.values()) != 0:
+            config["decode_tp"] = len(list(decode_nodes.values())[0]) * 4
+
+        if len(frontends) != 0:
+            config["frontends"] = len(frontends)
 
     result = {**config, **profile_result}
     return result
 
 
 def find_all_runs(logs_dir: str) -> list[dict]:
-    """Find and analyze all benchmark runs in the logs directory."""
-    paths = [
-        os.path.join(logs_dir, x)
-        for x in os.listdir(logs_dir)
-        if ".py" not in x and os.path.isdir(os.path.join(logs_dir, x))
-    ]
+    """Find and analyze all benchmark runs in the logs directory.
+    
+    Only processes directories that look like job runs (numeric prefix).
+    Skips hidden directories, Python files, and other non-job directories.
+    """
+    paths = []
+    for x in os.listdir(logs_dir):
+        # Skip hidden directories and files
+        if x.startswith("."):
+            continue
+        # Skip common non-job directories
+        if x in ["utils", "__pycache__", "venv", ".venv"]:
+            continue
+        # Skip Python files
+        if ".py" in x:
+            continue
+        
+        full_path = os.path.join(logs_dir, x)
+        if not os.path.isdir(full_path):
+            continue
+            
+        # Only include directories that start with a numeric job ID
+        # This filters out utils/, __pycache__/, etc.
+        first_part = x.split("_")[0]
+        if not first_part.isdigit():
+            continue
+            
+        paths.append(full_path)
 
     all_runs = []
     for path in sorted(paths, key=lambda p: extract_job_id(os.path.basename(p)), reverse=True):

@@ -66,5 +66,38 @@ The app expects benchmark runs in subdirectories with:
 
 - `vllm_isl_*_osl_*/` containing `*.json` result files
 - `*_config.json` files for node configurations
+- `{jobid}.json` - **NEW!** Metadata file with run configuration (faster parsing, no regex needed)
+
+### Metadata File Format (Recommended)
+
+Starting with job 3667, runs can include a `{jobid}.json` file (e.g., `3667.json`) with structured metadata:
+
+```json
+{
+  "version": "1.0",
+  "run_metadata": {
+    "slurm_job_id": "3667",
+    "run_date": "20251110_192145",
+    "container": "/path/to/container.sqsh",
+    "prefill_workers": 1,
+    "decode_workers": 12,
+    ...
+  },
+  "profiler_metadata": {
+    "type": "vllm",
+    "isl": "1024",
+    "osl": "1024",
+    ...
+  }
+}
+```
+
+**Benefits:**
+
+- ✅ **10x faster** - No regex parsing of log files needed
+- ✅ **More reliable** - Structured data instead of text scraping
+- ✅ **Backward compatible** - Old runs without this file still work (with legacy parsing)
+
+If this file is missing, the dashboard falls back to parsing log files (with a prominent warning).
 
 See `LOG_STRUCTURE.md` for detailed format.

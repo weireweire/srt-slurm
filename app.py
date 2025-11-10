@@ -91,7 +91,7 @@ def load_node_metrics(run_path: str):
 
 # Wrapper functions to use generic graph builders with caching
 @st.cache_data(show_spinner=False)
-def create_node_throughput_graph(_node_metrics_list, group_by_dp=False):
+def create_node_throughput_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create input throughput over time graph."""
     return create_node_metric_graph(
         _node_metrics_list,
@@ -100,11 +100,12 @@ def create_node_throughput_graph(_node_metrics_list, group_by_dp=False):
         metric_key="input_throughput",
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
 
 
 @st.cache_data(show_spinner=False)
-def create_cache_hit_rate_graph(_node_metrics_list, group_by_dp=False):
+def create_cache_hit_rate_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create cache hit rate visualization."""
 
     def calculate_hit_rate(batch):
@@ -123,13 +124,14 @@ def create_cache_hit_rate_graph(_node_metrics_list, group_by_dp=False):
         value_extractor=calculate_hit_rate,
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(yaxis={"range": [0, 100]})
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_kv_cache_utilization_graph(_node_metrics_list, group_by_dp=False):
+def create_kv_cache_utilization_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create KV cache utilization visualization."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -139,13 +141,14 @@ def create_kv_cache_utilization_graph(_node_metrics_list, group_by_dp=False):
         value_extractor=lambda b: b.get("token_usage", 0) * 100,
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(yaxis={"range": [0, 100]})
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_queue_depth_graph(_node_metrics_list, group_by_dp=False):
+def create_queue_depth_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create queue depth visualization."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -154,13 +157,14 @@ def create_queue_depth_graph(_node_metrics_list, group_by_dp=False):
         metric_key="queue_req",
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(hovermode="x unified")
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_node_inflight_requests_graph(_node_metrics_list, group_by_dp=False):
+def create_node_inflight_requests_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create inflight requests visualization."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -170,13 +174,14 @@ def create_node_inflight_requests_graph(_node_metrics_list, group_by_dp=False):
         mode="lines",
         stackgroup="one",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(hovermode="x unified")
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_decode_running_requests_graph(_node_metrics_list, group_by_dp=False):
+def create_decode_running_requests_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create running requests visualization for decode nodes."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -186,13 +191,14 @@ def create_decode_running_requests_graph(_node_metrics_list, group_by_dp=False):
         batch_filter=lambda b: b.get("type") == "decode",
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(hovermode="x unified")
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_decode_gen_throughput_graph(_node_metrics_list, group_by_dp=False):
+def create_decode_gen_throughput_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create generation throughput visualization for decode nodes."""
     return create_node_metric_graph(
         _node_metrics_list,
@@ -202,11 +208,12 @@ def create_decode_gen_throughput_graph(_node_metrics_list, group_by_dp=False):
         batch_filter=lambda b: b.get("type") == "decode",
         mode="lines+markers",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
 
 
 @st.cache_data(show_spinner=False)
-def create_decode_transfer_req_graph(_node_metrics_list, group_by_dp=False):
+def create_decode_transfer_req_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create transfer requests visualization for decode nodes."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -217,13 +224,14 @@ def create_decode_transfer_req_graph(_node_metrics_list, group_by_dp=False):
         mode="lines",
         stackgroup="one",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(hovermode="x unified")
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_decode_prealloc_req_graph(_node_metrics_list, group_by_dp=False):
+def create_decode_prealloc_req_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create prealloc requests visualization for decode nodes."""
     fig = create_node_metric_graph(
         _node_metrics_list,
@@ -234,13 +242,14 @@ def create_decode_prealloc_req_graph(_node_metrics_list, group_by_dp=False):
         mode="lines",
         stackgroup="one",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
     fig.update_layout(hovermode="x unified")
     return fig
 
 
 @st.cache_data(show_spinner=False)
-def create_decode_disagg_stacked_graph(_node_metrics_list, group_by_dp=False):
+def create_decode_disagg_stacked_graph(_node_metrics_list, group_by_dp=False, aggregate_all=False):
     """Create stacked area chart for disaggregation request flow."""
     metrics_config = [
         {"key": "prealloc_req", "name": "Prealloc Queue", "color": "rgba(99, 110, 250, 0.3)"},
@@ -254,6 +263,7 @@ def create_decode_disagg_stacked_graph(_node_metrics_list, group_by_dp=False):
         metrics_config=metrics_config,
         batch_filter=lambda b: b.get("type") == "decode",
         group_by_dp=group_by_dp,
+        aggregate_all=aggregate_all,
     )
 
 
@@ -790,11 +800,20 @@ def main():
             )
 
             # Add toggle for grouping
-            group_by_dp = st.checkbox(
-                "📊 Group by DP (show averaged lines per DP group)",
-                value=True,
-                help="When enabled, nodes are grouped by DP index and metrics are averaged across TP workers. This reduces visual clutter when viewing many nodes.",
+            aggregation_mode = st.radio(
+                "📊 Node Aggregation",
+                options=[
+                    "Show individual nodes",
+                    "Group by DP rank (average per DP)",
+                    "Aggregate all nodes (single averaged line)",
+                ],
+                index=1,  # Default to group by DP
+                horizontal=True,
+                help="Control how node metrics are displayed: individual lines, grouped by DP rank, or fully aggregated across all nodes.",
             )
+            
+            group_by_dp = aggregation_mode == "Group by DP rank (average per DP)"
+            aggregate_all = aggregation_mode == "Aggregate all nodes (single averaged line)"
 
             # Prefill Metrics Section
             if prefill_nodes:
@@ -802,7 +821,7 @@ def main():
 
                 # Vertically stack graphs for better horizontal stretching
                 throughput_fig = create_node_throughput_graph(
-                    prefill_nodes, group_by_dp=group_by_dp
+                    prefill_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                 )
                 throughput_fig.update_xaxes(showgrid=True)
                 throughput_fig.update_yaxes(showgrid=True)
@@ -812,7 +831,7 @@ def main():
                 )
 
                 inflight_fig = create_node_inflight_requests_graph(
-                    prefill_nodes, group_by_dp=group_by_dp
+                    prefill_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                 )
                 inflight_fig.update_xaxes(showgrid=True)
                 inflight_fig.update_yaxes(showgrid=True)
@@ -821,7 +840,7 @@ def main():
                     "Requests that have been sent to decode workers in PD disaggregation mode"
                 )
 
-                cache_fig = create_cache_hit_rate_graph(prefill_nodes, group_by_dp=group_by_dp)
+                cache_fig = create_cache_hit_rate_graph(prefill_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all)
                 cache_fig.update_xaxes(showgrid=True)
                 cache_fig.update_yaxes(showgrid=True)
                 st.plotly_chart(cache_fig, width="stretch", key="prefill_cache_hit")
@@ -829,7 +848,7 @@ def main():
                     "Percentage of tokens found in prefix cache - higher values indicate better cache reuse and reduced compute"
                 )
 
-                kv_fig = create_kv_cache_utilization_graph(prefill_nodes, group_by_dp=group_by_dp)
+                kv_fig = create_kv_cache_utilization_graph(prefill_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all)
                 kv_fig.update_xaxes(showgrid=True)
                 kv_fig.update_yaxes(showgrid=True)
                 st.plotly_chart(kv_fig, width="stretch", key="prefill_kv_util")
@@ -837,7 +856,7 @@ def main():
                     "Percentage of KV cache memory currently in use - helps tune max-total-tokens and identify memory pressure"
                 )
 
-                queue_fig = create_queue_depth_graph(prefill_nodes, group_by_dp=group_by_dp)
+                queue_fig = create_queue_depth_graph(prefill_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all)
                 queue_fig.update_xaxes(showgrid=True)
                 queue_fig.update_yaxes(showgrid=True)
                 st.plotly_chart(queue_fig, width="stretch", key="prefill_queue")
@@ -858,7 +877,7 @@ def main():
                     )
                 else:
                     running_fig = create_decode_running_requests_graph(
-                        decode_nodes, group_by_dp=group_by_dp
+                        decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                     )
                     running_fig.update_xaxes(showgrid=True)
                     running_fig.update_yaxes(showgrid=True)
@@ -868,7 +887,7 @@ def main():
                     )
 
                     gen_fig = create_decode_gen_throughput_graph(
-                        decode_nodes, group_by_dp=group_by_dp
+                        decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                     )
                     gen_fig.update_xaxes(showgrid=True)
                     gen_fig.update_yaxes(showgrid=True)
@@ -878,7 +897,7 @@ def main():
                     )
 
                     kv_decode_fig = create_kv_cache_utilization_graph(
-                        decode_nodes, group_by_dp=group_by_dp
+                        decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                     )
                     kv_decode_fig.update_xaxes(showgrid=True)
                     kv_decode_fig.update_yaxes(showgrid=True)
@@ -888,7 +907,7 @@ def main():
                     )
 
                     queue_decode_fig = create_queue_depth_graph(
-                        decode_nodes, group_by_dp=group_by_dp
+                        decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                     )
                     queue_decode_fig.update_xaxes(showgrid=True)
                     queue_decode_fig.update_yaxes(showgrid=True)
@@ -911,7 +930,7 @@ def main():
 
                     if disagg_view == "Stacked (Combined)":
                         stacked_fig = create_decode_disagg_stacked_graph(
-                            decode_nodes, group_by_dp=group_by_dp
+                            decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                         )
                         stacked_fig.update_xaxes(showgrid=True)
                         stacked_fig.update_yaxes(showgrid=True)
@@ -921,7 +940,7 @@ def main():
                         )
                     else:
                         transfer_fig = create_decode_transfer_req_graph(
-                            decode_nodes, group_by_dp=group_by_dp
+                            decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                         )
                         transfer_fig.update_xaxes(showgrid=True)
                         transfer_fig.update_yaxes(showgrid=True)
@@ -931,7 +950,7 @@ def main():
                         )
 
                         prealloc_fig = create_decode_prealloc_req_graph(
-                            decode_nodes, group_by_dp=group_by_dp
+                            decode_nodes, group_by_dp=group_by_dp, aggregate_all=aggregate_all
                         )
                         prealloc_fig.update_xaxes(showgrid=True)
                         prealloc_fig.update_yaxes(showgrid=True)

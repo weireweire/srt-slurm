@@ -13,6 +13,99 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
+def aggregate_all_nodes(node_metrics_list: list[dict]) -> list[dict]:
+    """Aggregate all nodes together and average their metrics.
+
+    Similar to group_by_dp but combines ALL nodes (all DP ranks, all TP workers)
+    into a single averaged line per run.
+
+    Args:
+        node_metrics_list: List of node data dictionaries
+
+    Returns:
+        List with one averaged node entry per run
+    """
+    run_groups = defaultdict(list)
+
+    for node_data in node_metrics_list:
+        if not node_data["prefill_batches"]:
+            continue
+
+        run_id = node_data.get("run_id", "Unknown")
+        run_groups[run_id].append(node_data)
+
+    # Create averaged node data for each run
+    aggregated_nodes = []
+
+    for run_id, nodes in run_groups.items():
+        if not nodes:
+            continue
+
+        # Collect all timestamps and metrics across ALL nodes in this run
+        all_batches = defaultdict(list)  # timestamp -> list of metric values
+
+        for node in nodes:
+            for batch in node["prefill_batches"]:
+                ts = batch.get("timestamp", "")
+                if ts:
+                    all_batches[ts].append(batch)
+
+        # Average metrics at each timestamp
+        averaged_batches = []
+        for timestamp in sorted(all_batches.keys()):
+            batches_at_time = all_batches[timestamp]
+
+            # Average all numeric metrics
+            avg_batch = {"timestamp": timestamp, "dp": 0}
+
+            # List of metrics to average
+            metrics = [
+                "input_throughput",
+                "gen_throughput",
+                "new_seq",
+                "new_token",
+                "running_req",
+                "queue_req",
+                "inflight_req",
+                "transfer_req",
+                "prealloc_req",
+                "num_tokens",
+                "token_usage",
+                "preallocated_usage",
+            ]
+
+            for metric in metrics:
+                values = [b.get(metric) for b in batches_at_time if metric in b]
+                if values:
+                    avg_batch[metric] = np.mean(values)
+
+            # Copy type from first batch
+            if batches_at_time:
+                avg_batch["type"] = batches_at_time[0].get("type", "prefill")
+
+            averaged_batches.append(avg_batch)
+
+        # Create aggregated node data structure
+        node_count = len(nodes)
+        worker_type = nodes[0]["node_info"]["worker_type"]
+
+        aggregated_node = {
+            "node_info": {
+                "node": f"{run_id}_ALL_NODES",
+                "worker_type": worker_type,
+                "worker_id": f"avg_{node_count}_nodes",
+            },
+            "prefill_batches": averaged_batches,
+            "memory_snapshots": [],
+            "config": nodes[0].get("config", {}),
+            "run_id": run_id,
+        }
+
+        aggregated_nodes.append(aggregated_node)
+
+    return aggregated_nodes
+
+
 def group_nodes_by_dp(node_metrics_list: list[dict]) -> list[dict]:
     """Group nodes by DP index and average their metrics across TP workers.
 
@@ -117,6 +210,7 @@ def create_node_metric_graph(
     mode: str = "lines+markers",
     stackgroup: str | None = None,
     group_by_dp: bool = False,
+    aggregate_all: bool = False,
 ) -> go.Figure:
     """Generic function to create node metric graphs.
 
@@ -129,12 +223,15 @@ def create_node_metric_graph(
         value_extractor: Optional function to compute value from batch (default: extract metric_key)
         mode: Plotly trace mode ('lines+markers', 'lines', etc.)
         stackgroup: Stack group name for stacked charts (None for non-stacked)
-        group_by_dp: If True, group nodes by DP and show averaged lines
+        group_by_dp: If True, group nodes by DP and show averaged lines per DP group
+        aggregate_all: If True, aggregate ALL nodes into a single averaged line per run
 
     Returns:
         Plotly Figure
     """
-    if group_by_dp:
+    if aggregate_all:
+        node_metrics_list = aggregate_all_nodes(node_metrics_list)
+    elif group_by_dp:
         node_metrics_list = group_nodes_by_dp(node_metrics_list)
 
     fig = go.Figure()
@@ -212,6 +309,7 @@ def create_stacked_metric_graph(
     metrics_config: list[dict[str, str]],
     batch_filter: Callable | None = None,
     group_by_dp: bool = False,
+    aggregate_all: bool = False,
 ) -> go.Figure:
     """Create stacked area chart for multiple metrics.
 
@@ -220,12 +318,15 @@ def create_stacked_metric_graph(
         title: Graph title
         metrics_config: List of dicts with 'key', 'name', 'color' for each metric
         batch_filter: Optional function to filter batches
-        group_by_dp: If True, group nodes by DP and show averaged lines
+        group_by_dp: If True, group nodes by DP and show averaged lines per DP group
+        aggregate_all: If True, aggregate ALL nodes into a single averaged line per run
 
     Returns:
         Plotly Figure
     """
-    if group_by_dp:
+    if aggregate_all:
+        node_metrics_list = aggregate_all_nodes(node_metrics_list)
+    elif group_by_dp:
         node_metrics_list = group_nodes_by_dp(node_metrics_list)
 
     fig = go.Figure()
