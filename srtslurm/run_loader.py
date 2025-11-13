@@ -9,6 +9,9 @@ import logging
 import os
 import re
 
+import pandas as pd
+
+from .cache_manager import CacheManager
 from .models import BenchmarkRun
 
 logger = logging.getLogger(__name__)
@@ -163,16 +166,44 @@ class RunLoader:
         """Load benchmark results from profiler output files.
 
         Looks for directories like "vllm_isl_1024_osl_1024/" and parses JSON files.
+        Uses parquet caching to avoid re-parsing on subsequent loads.
 
         Args:
             run: BenchmarkRun object to populate with results
         """
         run_path = run.metadata.path
 
-        # Look for profiler result directories
-        profiler_pattern = re.compile(
-            rf"{run.profiler.profiler_type}_isl_{run.profiler.isl}_osl_{run.profiler.osl}"
+        # Initialize cache manager
+        cache_mgr = CacheManager(run_path)
+
+        # Define source patterns for cache validation
+        profiler_pattern_str = (
+            f"{run.profiler.profiler_type}_isl_{run.profiler.isl}_osl_{run.profiler.osl}"
         )
+        source_patterns = [f"{profiler_pattern_str}/*.json"]
+
+        # Try to load from cache first
+        if cache_mgr.is_cache_valid("benchmark_results", source_patterns):
+            cached_df = cache_mgr.load_from_cache("benchmark_results")
+            if cached_df is not None and not cached_df.empty:
+                # Populate run.profiler from cached DataFrame
+                results = {
+                    "concurrencies": cached_df["concurrency"].tolist(),
+                    "output_tps": cached_df["output_tps"].tolist(),
+                    "mean_itl_ms": cached_df["mean_itl_ms"].tolist(),
+                    "mean_ttft_ms": cached_df["mean_ttft_ms"].tolist(),
+                    "request_rate": cached_df["request_rate"].tolist(),
+                    "mean_tpot_ms": (
+                        cached_df["mean_tpot_ms"].tolist()
+                        if "mean_tpot_ms" in cached_df.columns
+                        else []
+                    ),
+                }
+                run.profiler.add_benchmark_results(results)
+                return
+
+        # Cache miss or invalid - parse from JSON files
+        profiler_pattern = re.compile(profiler_pattern_str)
 
         for entry in os.listdir(run_path):
             if profiler_pattern.match(entry):
@@ -180,6 +211,23 @@ class RunLoader:
                 if os.path.isdir(result_dir):
                     results = self._parse_profiler_results(result_dir)
                     run.profiler.add_benchmark_results(results)
+
+                    # Save to cache
+                    if results["concurrencies"]:
+                        # Convert to DataFrame for caching
+                        cache_data = {
+                            "concurrency": results["concurrencies"],
+                            "output_tps": results["output_tps"],
+                            "mean_itl_ms": results["mean_itl_ms"],
+                            "mean_ttft_ms": results["mean_ttft_ms"],
+                            "request_rate": results["request_rate"],
+                        }
+                        if results["mean_tpot_ms"]:
+                            cache_data["mean_tpot_ms"] = results["mean_tpot_ms"]
+
+                        cache_df = pd.DataFrame(cache_data)
+                        cache_mgr.save_to_cache("benchmark_results", cache_df, source_patterns)
+
                     break
 
     def _parse_profiler_results(self, result_dir: str) -> dict:
