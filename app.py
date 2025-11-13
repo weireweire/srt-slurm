@@ -64,17 +64,16 @@ st.markdown(
         border-radius: 0.5rem;
         margin: 0.5rem 0;
     }
-    /* Prevent truncation in multiselect */
-    [data-baseweb="select"] span {
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: unset !important;
+    /* Widen multiselect to prevent truncation */
+    [data-baseweb="select"] {
+        min-width: 100% !important;
     }
-    /* Fix multiselect dropdown items */
-    [data-baseweb="popover"] li {
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: unset !important;
+    [data-baseweb="select"] > div {
+        max-width: none !important;
+    }
+    /* Increase max-width of selected items */
+    [data-baseweb="tag"] {
+        max-width: 400px !important;
     }
 </style>
 """,
@@ -661,10 +660,13 @@ def main():
         # Extract job number
         job_num = job_id.split("_")[0] if "_" in job_id else job_id
 
-        # Create readable label
+        # Create compact label
         topology = f"{run.get('prefill_dp', '?')}P/{run.get('decode_dp', '?')}D"
         isl = run.get("isl", "?")
-        label = f"[{date_short}] Job {job_num} - {topology} (ISL {isl})"
+        osl = run.get("osl", "?")
+        gpu_type = run.get("gpu_type", "")
+        gpu_suffix = f" [{gpu_type}]" if gpu_type else ""
+        label = f"{job_num} | {topology} | {isl}/{osl}{gpu_suffix}"
 
         run_labels.append(label)
         label_to_run[label] = run
