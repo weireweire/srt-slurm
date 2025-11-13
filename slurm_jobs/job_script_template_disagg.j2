@@ -22,7 +22,11 @@ PREFILL_GPUS=$((PREFILL_NODES * GPUS_PER_NODE))
 DECODE_GPUS=$((DECODE_NODES * GPUS_PER_NODE))
 PREFILL_NODES_PER_WORKER=$((PREFILL_NODES / PREFILL_WORKERS))
 DECODE_NODES_PER_WORKER=$((DECODE_NODES / DECODE_WORKERS))
+{% if log_dir_prefix.startswith('/') %}
+LOG_DIR="{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ prefill_workers }}P_{{ decode_workers }}D_{{ timestamp }}"
+{% else %}
 LOG_DIR="${SLURM_SUBMIT_DIR}/{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ prefill_workers }}P_{{ decode_workers }}D_{{ timestamp }}"
+{% endif %}
 SCRIPT_DIR="${SLURM_SUBMIT_DIR}/scripts"
 OUTPUT_DIR="${SLURM_SUBMIT_DIR}/outputs"
 MODEL_DIR="{{ model_dir }}"
