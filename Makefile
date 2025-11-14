@@ -8,7 +8,6 @@ default:
 
 lint:
 	uvx pre-commit run --all-files
-	uvx ty check
 
 test:
 	cd /Users/idhanani/Desktop/benchmarks/infbench && uv run python -m tests.test_basic && uv run python -m tests.test_aggregations

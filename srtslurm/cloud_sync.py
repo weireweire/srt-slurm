@@ -5,7 +5,6 @@ Cloud storage sync for benchmark results using S3-compatible storage
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 try:
     import boto3
@@ -24,8 +23,8 @@ class CloudSyncManager:
         endpoint_url: str,
         bucket: str,
         prefix: str = "",
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
     ):
         """Initialize CloudSyncManager.
 
@@ -37,9 +36,7 @@ class CloudSyncManager:
             aws_secret_access_key: Secret key (defaults to env var)
         """
         if boto3 is None:
-            raise ImportError(
-                "boto3 is required for cloud sync. Install with: pip install boto3"
-            )
+            raise ImportError("boto3 is required for cloud sync. Install with: pip install boto3")
 
         self.endpoint_url = endpoint_url
         self.bucket = bucket
@@ -73,7 +70,7 @@ class CloudSyncManager:
 
         # Get all files in run directory (including subdirectories)
         files_to_upload = []
-        for root, dirs, files in os.walk(run_path):
+        for root, _dirs, files in os.walk(run_path):
             for file in files:
                 file_path = Path(root) / file
                 files_to_upload.append(file_path)
@@ -105,9 +102,7 @@ class CloudSyncManager:
         logger.info(f"Successfully pushed {uploaded} files from {run_name}")
         return True
 
-    def pull_run(
-        self, run_id: str, local_dir: str, progress_callback=None
-    ) -> Optional[str]:
+    def pull_run(self, run_id: str, local_dir: str, progress_callback=None) -> str | None:
         """Download a single run from cloud storage.
 
         Args:
@@ -250,9 +245,7 @@ class CloudSyncManager:
         """
         prefix = f"{self.prefix}{run_id}/"
         try:
-            response = self.s3.list_objects_v2(
-                Bucket=self.bucket, Prefix=prefix, MaxKeys=1
-            )
+            response = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix, MaxKeys=1)
             return "Contents" in response and len(response["Contents"]) > 0
         except ClientError as e:
             logger.error(f"Failed to check if run exists: {e}")
@@ -280,7 +273,7 @@ class CloudSyncManager:
             return False
 
 
-def load_cloud_config(config_path: str = "cloud_config.toml") -> Optional[dict]:
+def load_cloud_config(config_path: str = "cloud_config.toml") -> dict | None:
     """Load cloud configuration from TOML file.
 
     Args:
@@ -313,7 +306,7 @@ def load_cloud_config(config_path: str = "cloud_config.toml") -> Optional[dict]:
 
 def create_sync_manager_from_config(
     config_path: str = "cloud_config.toml",
-) -> Optional[CloudSyncManager]:
+) -> CloudSyncManager | None:
     """Create CloudSyncManager from config file.
 
     Args:
@@ -341,4 +334,3 @@ def create_sync_manager_from_config(
     except Exception as e:
         logger.error(f"Failed to create sync manager: {e}")
         return None
-

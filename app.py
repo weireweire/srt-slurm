@@ -84,7 +84,7 @@ st.markdown(
 
 def sync_cloud_data(logs_dir):
     """Sync missing runs from cloud storage if configured.
-    
+
     Returns:
         Tuple of (sync_performed: bool, sync_count: int, error_message: str or None)
     """
@@ -93,7 +93,7 @@ def sync_cloud_data(logs_dir):
         if sync_manager is None:
             # No cloud config, skip sync
             return False, 0, None
-        
+
         # Sync missing runs
         count = sync_manager.sync_missing_runs(logs_dir)
         return True, count, None
@@ -106,56 +106,7 @@ def sync_cloud_data(logs_dir):
 def load_data(logs_dir):
     """Load and cache benchmark data."""
     loader = RunLoader(logs_dir)
-    runs = loader.load_all()
-
-    # Convert to dicts for compatibility with existing code
-    return [_run_to_dict(run) for run in runs]
-
-
-def _run_to_dict(run) -> dict:
-    """Convert BenchmarkRun object to dict format.
-
-    Temporary converter to maintain compatibility with existing app.py code.
-    Can be removed once app.py is fully migrated to use objects directly.
-    """
-    from datetime import datetime
-
-    # Format date to match legacy format
-    try:
-        dt = datetime.strptime(run.metadata.run_date, "%Y%m%d_%H%M%S")
-        formatted_date = dt.strftime("%Y-%m-%d %H:%M:%S")
-    except (ValueError, TypeError):
-        formatted_date = run.metadata.run_date
-
-    return {
-        "slurm_job_id": f"{run.job_id}_{run.metadata.prefill_workers}P_{run.metadata.decode_workers}D_{run.metadata.run_date}",
-        "path": run.metadata.path,
-        "run_date": formatted_date,
-        "container": run.metadata.container,
-        # For display: show workers as DP
-        "prefill_dp": run.metadata.prefill_workers,
-        "decode_dp": run.metadata.decode_workers,
-        "prefill_tp": run.metadata.gpus_per_node,
-        "decode_tp": run.metadata.gpus_per_node,
-        # For total GPU calculation: pass through nodes
-        "prefill_nodes": run.metadata.prefill_nodes,
-        "decode_nodes": run.metadata.decode_nodes,
-        "gpus_per_node": run.metadata.gpus_per_node,
-        "frontends": run.metadata.num_additional_frontends,
-        "gpu_type": run.metadata.gpu_type,
-        "profiler_type": run.profiler.profiler_type,
-        "isl": run.profiler.isl,
-        "osl": run.profiler.osl,
-        "concurrencies": run.profiler.concurrency_values,
-        "output_tps": run.profiler.output_tps,
-        "total_tps": run.profiler.total_tps,
-        "mean_itl_ms": run.profiler.mean_itl_ms,
-        "mean_ttft_ms": run.profiler.mean_ttft_ms,
-        "mean_tpot_ms": run.profiler.mean_tpot_ms,
-        "request_rate": run.profiler.request_rate,
-        "is_complete": run.is_complete,
-        "missing_concurrencies": run.missing_concurrencies,
-    }
+    return loader.load_all()
 
 
 @st.cache_data(show_spinner="Loading node metrics from logs...")
@@ -235,83 +186,6 @@ def _memory_to_dict(mem) -> dict:
         if value is not None:
             result[field] = value
     return result
-
-
-def _runs_to_dataframe(run_dicts: list[dict]):
-    """Convert list of run dicts to DataFrame.
-
-    Temporary wrapper that uses old metrics.py logic.
-    TODO: Could be removed by converting run_dicts back to BenchmarkRun objects.
-    """
-    import pandas as pd
-
-    rows = []
-
-    for run in run_dicts:
-        # Calculate total GPUs from nodes (not workers)
-        # Total GPUs = (prefill_nodes + decode_nodes) * gpus_per_node
-        total_gpus = 0
-        if "prefill_nodes" in run and "decode_nodes" in run and "gpus_per_node" in run:
-            total_gpus = (run["prefill_nodes"] + run["decode_nodes"]) * run["gpus_per_node"]
-        
-        # Fallback to old calculation if nodes not available
-        if total_gpus == 0:
-            if "prefill_tp" in run and "prefill_dp" in run:
-                total_gpus += run["prefill_tp"] * run["prefill_dp"]
-            if "decode_tp" in run and "decode_dp" in run:
-                total_gpus += run["decode_tp"] * run["decode_dp"]
-        
-        total_gpus = total_gpus if total_gpus > 0 else 1
-
-        run_id = run.get("slurm_job_id", "Unknown")
-        output_tps = run.get("output_tps", [])
-        total_tps = run.get("total_tps", [])
-        concurrencies = run.get("concurrencies", [])
-
-        # Create a row for each concurrency level
-        for i in range(len(output_tps)):
-            tps = output_tps[i]
-            output_tps_per_gpu = tps / total_gpus
-
-            # Get total TPS for this concurrency level
-            total_token_tps = total_tps[i] if i < len(total_tps) else None
-            total_tps_per_gpu = total_token_tps / total_gpus if total_token_tps else None
-
-            tpot = run.get("mean_tpot_ms", [])[i] if i < len(run.get("mean_tpot_ms", [])) else None
-            tps_per_user = 1000 / tpot if tpot and tpot > 0 else 0
-
-            row = {
-                "Run ID": run_id,
-                "Run Date": run.get("run_date", "N/A"),
-                "Profiler": run.get("profiler_type", "N/A"),
-                "ISL": run.get("isl", "N/A"),
-                "OSL": run.get("osl", "N/A"),
-                "Prefill TP": run.get("prefill_tp", "N/A"),
-                "Prefill DP": run.get("prefill_dp", "N/A"),
-                "Decode TP": run.get("decode_tp", "N/A"),
-                "Decode DP": run.get("decode_dp", "N/A"),
-                "Frontends": run.get("frontends", "N/A"),
-                "Total GPUs": total_gpus,
-                "Request Rate": run.get("request_rate", [])[i]
-                if i < len(run.get("request_rate", []))
-                else "N/A",
-                "Concurrency": concurrencies[i] if i < len(concurrencies) else "N/A",
-                "Output TPS": tps,
-                "Total TPS": total_token_tps if total_token_tps else "N/A",
-                "Output TPS/GPU": output_tps_per_gpu,
-                "Total TPS/GPU": total_tps_per_gpu if total_tps_per_gpu else "N/A",
-                "Output TPS/User": tps_per_user,
-                "Mean TTFT (ms)": run.get("mean_ttft_ms", [])[i]
-                if i < len(run.get("mean_ttft_ms", []))
-                else "N/A",
-                "Mean TPOT (ms)": tpot if tpot else "N/A",
-                "Mean ITL (ms)": run.get("mean_itl_ms", [])[i]
-                if i < len(run.get("mean_itl_ms", []))
-                else "N/A",
-            }
-            rows.append(row)
-
-    return pd.DataFrame(rows)
 
 
 # Wrapper functions to use generic graph builders with caching
@@ -529,7 +403,7 @@ def main():
     st.sidebar.header("Run Selection")
 
     # Always sort by date, newest first
-    sorted_runs = sorted(runs.copy(), key=lambda r: r.get("run_date", ""), reverse=True)
+    sorted_runs = sorted(runs.copy(), key=lambda r: r.metadata.formatted_date, reverse=True)
 
     # Add filtering options
     st.sidebar.subheader("Filters")
@@ -539,7 +413,7 @@ def main():
         # Extract unique GPU types from run metadata
         gpu_types = set()
         for run in runs:
-            gpu_type = run.get("gpu_type", "")
+            gpu_type = run.metadata.gpu_type
             if gpu_type and gpu_type != "N/A":
                 gpu_types.add(gpu_type)
 
@@ -556,7 +430,7 @@ def main():
             if selected_gpu_types:
                 filtered_by_gpu = []
                 for run in sorted_runs:
-                    if run.get("gpu_type") in selected_gpu_types:
+                    if run.metadata.gpu_type in selected_gpu_types:
                         filtered_by_gpu.append(run)
                 sorted_runs = filtered_by_gpu
         else:
@@ -566,15 +440,12 @@ def main():
     with st.sidebar.expander("🔧 Topology", expanded=False):
         # Extract unique topologies (using worker counts)
         topologies = set()
-        topology_map = {}  # Maps display label to (prefill_workers, decode_workers)
         for run in sorted_runs:
-            # Get from metadata - these should be worker counts
-            prefill_workers = run.get("prefill_dp", "?")
-            decode_workers = run.get("decode_dp", "?")
+            # Get from metadata - these are worker counts
+            prefill_workers = run.metadata.prefill_workers
+            decode_workers = run.metadata.decode_workers
             topology = f"{prefill_workers}P/{decode_workers}D"
-            if topology != "?P/?D":
-                topologies.add(topology)
-                topology_map[topology] = (prefill_workers, decode_workers)
+            topologies.add(topology)
 
         if topologies:
             topology_options = sorted(topologies)
@@ -589,7 +460,7 @@ def main():
             if selected_topologies:
                 filtered_by_topology = []
                 for run in sorted_runs:
-                    topology = f"{run.get('prefill_dp', '?')}P/{run.get('decode_dp', '?')}D"
+                    topology = f"{run.metadata.prefill_workers}P/{run.metadata.decode_workers}D"
                     if topology in selected_topologies:
                         filtered_by_topology.append(run)
                 sorted_runs = filtered_by_topology
@@ -601,9 +472,9 @@ def main():
         # Extract unique ISL/OSL pairs
         isl_osl_pairs = set()
         for run in sorted_runs:
-            isl = run.get("isl")
-            osl = run.get("osl")
-            if isl and osl and isl != "N/A" and osl != "N/A" and isl != "?" and osl != "?":
+            isl = run.profiler.isl
+            osl = run.profiler.osl
+            if isl and osl:
                 isl_osl_pairs.add(f"{isl}/{osl}")
 
         if isl_osl_pairs:
@@ -619,7 +490,7 @@ def main():
             if selected_pairs:
                 filtered_by_isl_osl = []
                 for run in sorted_runs:
-                    pair = f"{run.get('isl')}/{run.get('osl')}"
+                    pair = f"{run.profiler.isl}/{run.profiler.osl}"
                     if pair in selected_pairs:
                         filtered_by_isl_osl.append(run)
                 sorted_runs = filtered_by_isl_osl
@@ -631,7 +502,7 @@ def main():
         # Extract unique containers
         container_values = set()
         for run in sorted_runs:
-            container = run.get("container")
+            container = run.metadata.container
             if container and container != "N/A":
                 container_values.add(container)
 
@@ -648,7 +519,7 @@ def main():
             if selected_containers:
                 filtered_by_container = []
                 for run in sorted_runs:
-                    container = run.get("container")
+                    container = run.metadata.container
                     if container in selected_containers or (
                         not container and "N/A" in selected_containers
                     ):
@@ -665,29 +536,14 @@ def main():
     label_to_run = {}
 
     for run in sorted_runs:
-        job_id = run.get("slurm_job_id", "Unknown")
-        date = run.get("run_date", "N/A")
-
-        # Parse date for shorter display
-        if date != "N/A":
-            try:
-                from datetime import datetime
-
-                date_obj = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
-                date_short = date_obj.strftime("%b %d").replace(" 0", " ")  # "Nov 4"
-            except Exception:
-                date_short = date.split()[0]  # Fallback to YYYY-MM-DD
-        else:
-            date_short = "No date"
-
-        # Extract job number
-        job_num = job_id.split("_")[0] if "_" in job_id else job_id
+        # Get short date format
+        date_short = run.metadata.formatted_date
 
         # Create compact label for multiselect (without job ID)
-        topology = f"{run.get('prefill_dp', '?')}P/{run.get('decode_dp', '?')}D"
-        isl = run.get("isl", "?")
-        osl = run.get("osl", "?")
-        gpu_type = run.get("gpu_type", "")
+        topology = f"{run.metadata.prefill_workers}P/{run.metadata.decode_workers}D"
+        isl = run.profiler.isl
+        osl = run.profiler.osl
+        gpu_type = run.metadata.gpu_type
         gpu_suffix = f" [{gpu_type}]" if gpu_type else ""
         label = f"{topology} | {isl}/{osl}{gpu_suffix}"
 
@@ -710,33 +566,36 @@ def main():
     filtered_runs = [label_to_run[label] for label in selected_labels]
 
     # Check for incomplete runs and warn user
-    incomplete_runs = [run for run in filtered_runs if not run.get("is_complete", True)]
+    incomplete_runs = [run for run in filtered_runs if not run.is_complete]
     if incomplete_runs:
         for run in incomplete_runs:
-            job_id = run.get("slurm_job_id", "Unknown").split("_")[0]
-            missing = run.get("missing_concurrencies", [])
+            job_id = run.job_id
+            missing = run.missing_concurrencies
             st.warning(
                 f"⚠️ **Job {job_id} is incomplete** - Missing concurrencies: {missing}. "
                 f"Job may have failed or timed out before completing all benchmarks."
             )
 
-    # Extract run IDs for compatibility with existing graph functions
-    selected_runs = [run.get("slurm_job_id", "Unknown") for run in filtered_runs]
-    
+    # Extract run IDs for graph lookups (format: jobid_XP_YD_date)
+    selected_runs = [
+        f"{run.job_id}_{run.metadata.prefill_workers}P_{run.metadata.decode_workers}D_{run.metadata.run_date}"
+        for run in filtered_runs
+    ]
+
     # Build legend labels for graphs (run_id -> full label with job number)
     run_legend_labels = {}
     for run in filtered_runs:
-        run_id = run.get("slurm_job_id", "Unknown")
-        job_num = run_id.split("_")[0] if "_" in run_id else run_id
-        topology = f"{run.get('prefill_dp', '?')}P/{run.get('decode_dp', '?')}D"
-        isl = run.get("isl", "?")
-        osl = run.get("osl", "?")
-        gpu_type = run.get("gpu_type", "")
+        run_id = f"{run.job_id}_{run.metadata.prefill_workers}P_{run.metadata.decode_workers}D_{run.metadata.run_date}"
+        topology = f"{run.metadata.prefill_workers}P/{run.metadata.decode_workers}D"
+        isl = run.profiler.isl
+        osl = run.profiler.osl
+        gpu_type = run.metadata.gpu_type
         gpu_suffix = f" [{gpu_type}]" if gpu_type else ""
-        run_legend_labels[run_id] = f"Job {job_num} | {topology} | {isl}/{osl}{gpu_suffix}"
+        run_legend_labels[run_id] = f"Job {run.job_id} | {topology} | {isl}/{osl}{gpu_suffix}"
 
-    # Get dataframe - use helper function to convert dicts
-    df = _runs_to_dataframe(filtered_runs)
+    # Get dataframe from RunLoader
+    loader = RunLoader(logs_dir)
+    df = loader.to_dataframe(filtered_runs)
 
     st.sidebar.divider()
 
@@ -762,26 +621,26 @@ def main():
 
     # Cloud sync
     st.sidebar.header("Cloud Sync")
-    
+
     auto_sync = st.sidebar.checkbox(
         "☁️ Auto-sync on load",
         value=False,
-        help="Automatically pull missing runs from cloud storage on startup"
+        help="Automatically pull missing runs from cloud storage on startup",
     )
-    
+
     if st.sidebar.button("🔄 Sync Now", use_container_width=True):
         # Clear cache and force sync
         load_data.clear()
         st.session_state["force_sync"] = True
         st.rerun()
-    
+
     # Perform sync if enabled
     if auto_sync or st.session_state.get("force_sync", False):
         st.session_state["force_sync"] = False
-        
+
         with st.spinner("Syncing from cloud storage..."):
             sync_performed, sync_count, error = sync_cloud_data(logs_dir)
-            
+
         if sync_performed:
             if error:
                 st.sidebar.error(f"Sync failed: {error}")
@@ -797,7 +656,7 @@ def main():
     st.header("Summary")
 
     # Show unique containers
-    containers = [run.get("container") for run in filtered_runs if run.get("container")]
+    containers = [run.metadata.container for run in filtered_runs if run.metadata.container]
     if containers:
         unique_containers = list(set(containers))
         if len(unique_containers) == 1:
@@ -854,7 +713,13 @@ def main():
             """)
 
         pareto_fig = create_pareto_graph(
-            df, selected_runs, show_cutoff, cutoff_value, show_frontier, y_axis_metric, run_legend_labels
+            df,
+            selected_runs,
+            show_cutoff,
+            cutoff_value,
+            show_frontier,
+            y_axis_metric,
+            run_legend_labels,
         )
         pareto_fig.update_xaxes(showgrid=True)
         pareto_fig.update_yaxes(showgrid=True)
@@ -1006,8 +871,8 @@ def main():
         all_node_metrics = []
         with st.spinner(f"Parsing logs for {len(filtered_runs)} run(s)..."):
             for run in filtered_runs:
-                run_path = run.get("path", "")
-                run_id = run.get("slurm_job_id", "Unknown")
+                run_path = run.metadata.path
+                run_id = f"{run.job_id}_{run.metadata.prefill_workers}P_{run.metadata.decode_workers}D_{run.metadata.run_date}"
                 if run_path and os.path.exists(run_path):
                     node_metrics = load_node_metrics(run_path)
                     # Add run_id to each node for identification in multi-run comparisons
@@ -1332,13 +1197,13 @@ def main():
         st.subheader("Run Configuration Details")
 
         for run in filtered_runs:
-            run_id = run.get("slurm_job_id", "Unknown")
-            run_path = run.get("path", "")
-            run_date = run.get("run_date", None)
+            run_id = f"{run.job_id}_{run.metadata.prefill_workers}P_{run.metadata.decode_workers}D_{run.metadata.run_date}"
+            run_path = run.metadata.path
+            run_date = run.metadata.formatted_date
 
             # Add date to expander title if available
-            expander_title = f"🔧 {run_id}"
-            if run_date and run_date != "N/A":
+            expander_title = f"🔧 Job {run.job_id}"
+            if run_date:
                 expander_title += f" ({run_date})"
 
             with st.expander(expander_title, expanded=len(filtered_runs) == 1):
@@ -1360,12 +1225,12 @@ def main():
                 with col2:
                     st.metric("GPU", config_data["summary"]["gpu_type"])
                 with col3:
-                    st.metric("ISL/OSL", f"{run.get('isl', 'N/A')}/{run.get('osl', 'N/A')}")
+                    st.metric("ISL/OSL", f"{run.profiler.isl}/{run.profiler.osl}")
                 with col4:
                     # Display profiler with GPU type from metadata
-                    gpu_type = run.get("gpu_type", "")
+                    gpu_type = run.metadata.gpu_type
                     gpu_type_suffix = f" ({gpu_type})" if gpu_type else ""
-                    st.metric("Profiler", f"{run.get('profiler_type', 'N/A')}{gpu_type_suffix}")
+                    st.metric("Profiler", f"{run.profiler.profiler_type}{gpu_type_suffix}")
 
                 st.caption(f"Model: {config_data['summary']['model']}")
                 st.divider()
@@ -1564,44 +1429,28 @@ def main():
             )
 
         # Sort filtered_runs based on selection
-        sorted_runs = filtered_runs.copy()
+        comparison_sorted = filtered_runs.copy()
         if sort_by == "Newest First":
-            sorted_runs = sorted(sorted_runs, key=lambda r: r.get("run_date", ""), reverse=True)
+            comparison_sorted = sorted(
+                comparison_sorted, key=lambda r: r.metadata.formatted_date, reverse=True
+            )
         elif sort_by == "Oldest First":
-            sorted_runs = sorted(sorted_runs, key=lambda r: r.get("run_date", ""))
+            comparison_sorted = sorted(comparison_sorted, key=lambda r: r.metadata.formatted_date)
         elif sort_by == "Job ID":
-            sorted_runs = sorted(sorted_runs, key=lambda r: r.get("slurm_job_id", ""))
+            comparison_sorted = sorted(comparison_sorted, key=lambda r: r.job_id)
 
         # Create formatted labels and mapping
         run_options = []
         run_map = {}
 
-        for run in sorted_runs:
-            job_id = run.get("slurm_job_id", "Unknown")
-            date = run.get("run_date", "N/A")
-
-            # Parse date for shorter display
-            if date != "N/A":
-                # Format: "2025-11-04 23:18:43" -> "Nov 4"
-                try:
-                    from datetime import datetime
-
-                    date_obj = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
-                    date_short = date_obj.strftime("%b %d").replace(
-                        " 0", " "
-                    )  # "Nov 4" (remove leading zero)
-                except Exception:
-                    date_short = date.split()[0]  # Fallback to YYYY-MM-DD
-            else:
-                date_short = "No date"
-
-            # Extract job number from ID like "3320_1P_4D_20251104_231843"
-            job_num = job_id.split("_")[0] if "_" in job_id else job_id
+        for run in comparison_sorted:
+            job_id = run.job_id
+            date_short = run.metadata.formatted_date
 
             # Create readable label
-            topology = f"{run.get('prefill_dp', '?')}P/{run.get('decode_dp', '?')}D"
-            isl = run.get("isl", "?")
-            label = f"[{date_short}] Job {job_num} - {topology} (ISL {isl})"
+            topology = f"{run.metadata.prefill_workers}P/{run.metadata.decode_workers}D"
+            isl = run.profiler.isl
+            label = f"[{date_short}] Job {job_id} - {topology} (ISL {isl})"
 
             run_options.append(label)
             run_map[label] = run
@@ -1617,19 +1466,17 @@ def main():
             run_a = run_map.get(run_a_label)
 
             if run_a:
-                st.caption(f"📅 {run_a.get('run_date', 'N/A')}")
-                st.caption(f"📊 ISL/OSL: {run_a.get('isl', 'N/A')}/{run_a.get('osl', 'N/A')}")
+                st.caption(f"📅 {run_a.metadata.formatted_date}")
+                st.caption(f"📊 ISL/OSL: {run_a.profiler.isl}/{run_a.profiler.osl}")
                 st.caption(
-                    f"🖥️ Topology: {run_a.get('prefill_dp', '?')}P/{run_a.get('decode_dp', '?')}D"
+                    f"🖥️ Topology: {run_a.metadata.prefill_workers}P/{run_a.metadata.decode_workers}D"
                 )
-                total_gpus_a = run_a.get("prefill_tp", 0) * run_a.get("prefill_dp", 0) + run_a.get(
-                    "decode_tp", 0
-                ) * run_a.get("decode_dp", 0)
+                total_gpus_a = run_a.total_gpus
                 st.caption(f"🎯 Total GPUs: {total_gpus_a}")
 
                 # Warn if job is incomplete
-                if not run_a.get("is_complete", True):
-                    missing = run_a.get("missing_concurrencies", [])
+                if not run_a.is_complete:
+                    missing = run_a.missing_concurrencies
                     st.warning(f"⚠️ **Incomplete job** - Missing concurrencies: {missing}")
 
         with col2:
@@ -1641,19 +1488,17 @@ def main():
             run_b = run_map.get(run_b_label)
 
             if run_b:
-                st.caption(f"📅 {run_b.get('run_date', 'N/A')}")
-                st.caption(f"📊 ISL/OSL: {run_b.get('isl', 'N/A')}/{run_b.get('osl', 'N/A')}")
+                st.caption(f"📅 {run_b.metadata.formatted_date}")
+                st.caption(f"📊 ISL/OSL: {run_b.profiler.isl}/{run_b.profiler.osl}")
                 st.caption(
-                    f"🖥️ Topology: {run_b.get('prefill_dp', '?')}P/{run_b.get('decode_dp', '?')}D"
+                    f"🖥️ Topology: {run_b.metadata.prefill_workers}P/{run_b.metadata.decode_workers}D"
                 )
-                total_gpus_b = run_b.get("prefill_tp", 0) * run_b.get("prefill_dp", 0) + run_b.get(
-                    "decode_tp", 0
-                ) * run_b.get("decode_dp", 0)
+                total_gpus_b = run_b.total_gpus
                 st.caption(f"🎯 Total GPUs: {total_gpus_b}")
 
                 # Warn if job is incomplete
-                if not run_b.get("is_complete", True):
-                    missing = run_b.get("missing_concurrencies", [])
+                if not run_b.is_complete:
+                    missing = run_b.missing_concurrencies
                     st.warning(f"⚠️ **Incomplete job** - Missing concurrencies: {missing}")
 
         # Validation
@@ -1663,8 +1508,8 @@ def main():
             st.divider()
 
             # Get config data for both runs
-            run_a_path = run_a.get("path", "")
-            run_b_path = run_b.get("path", "")
+            run_a_path = run_a.metadata.path
+            run_b_path = run_b.metadata.path
 
             configs_a = get_all_configs(run_a_path)
             configs_b = get_all_configs(run_b_path)
@@ -1698,14 +1543,14 @@ def main():
                                 str(config_comparison["topology_summary"]["prefill_dp"][0]),
                                 str(config_comparison["topology_summary"]["model"][0]),
                                 str(config_comparison["topology_summary"]["context_length"][0]),
-                                str(run_a.get("container", "N/A")),
+                                str(run_a.metadata.container or "N/A"),
                             ],
                             "Run B": [
                                 str(config_comparison["topology_summary"]["prefill_tp"][1]),
                                 str(config_comparison["topology_summary"]["prefill_dp"][1]),
                                 str(config_comparison["topology_summary"]["model"][1]),
                                 str(config_comparison["topology_summary"]["context_length"][1]),
-                                str(run_b.get("container", "N/A")),
+                                str(run_b.metadata.container or "N/A"),
                             ],
                         }
                     )
@@ -1808,22 +1653,23 @@ def main():
                     with viz_tab1:
                         st.markdown("#### Overlay Comparison")
                         # Use existing pareto graph with both runs selected
-                        run_a_id = run_a.get("slurm_job_id", "Unknown")
-                        run_b_id = run_b.get("slurm_job_id", "Unknown")
+                        run_a_id = f"{run_a.job_id}_{run_a.metadata.prefill_workers}P_{run_a.metadata.decode_workers}D_{run_a.metadata.run_date}"
+                        run_b_id = f"{run_b.job_id}_{run_b.metadata.prefill_workers}P_{run_b.metadata.decode_workers}D_{run_b.metadata.run_date}"
                         selected_for_comparison = [run_a_id, run_b_id]
                         comparison_df = df[df["Run ID"].isin(selected_for_comparison)]
-                        
+
                         # Build legend labels for comparison
                         comparison_labels = {}
                         for r in [run_a, run_b]:
-                            r_id = r.get("slurm_job_id", "Unknown")
-                            job_num = r_id.split("_")[0] if "_" in r_id else r_id
-                            topology = f"{r.get('prefill_dp', '?')}P/{r.get('decode_dp', '?')}D"
-                            isl = r.get("isl", "?")
-                            osl = r.get("osl", "?")
-                            gpu_type = r.get("gpu_type", "")
+                            r_id = f"{r.job_id}_{r.metadata.prefill_workers}P_{r.metadata.decode_workers}D_{r.metadata.run_date}"
+                            topology = f"{r.metadata.prefill_workers}P/{r.metadata.decode_workers}D"
+                            isl = r.profiler.isl
+                            osl = r.profiler.osl
+                            gpu_type = r.metadata.gpu_type
                             gpu_suffix = f" [{gpu_type}]" if gpu_type else ""
-                            comparison_labels[r_id] = f"Job {job_num} | {topology} | {isl}/{osl}{gpu_suffix}"
+                            comparison_labels[r_id] = (
+                                f"Job {r.job_id} | {topology} | {isl}/{osl}{gpu_suffix}"
+                            )
 
                         if not comparison_df.empty:
                             # Pareto comparison
