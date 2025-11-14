@@ -508,6 +508,32 @@ def main(input_args: list[str] | None = None):
             parsable_config = f"{parsable_config} {benchmark_config['num-threads']}"
         else:
             parsable_config = f"{parsable_config} 512"  # default
+    elif benchmark_config["type"] == "mmlu":
+        parsable_config = ""
+        # Parse mmlu-specific parameters
+        if "num-examples" in benchmark_config:
+            assert benchmark_config["num-examples"].isnumeric()
+            parsable_config = f"{parsable_config} {benchmark_config['num-examples']}"
+        else:
+            parsable_config = f"{parsable_config} 200"  # default
+
+        if "max-tokens" in benchmark_config:
+            assert benchmark_config["max-tokens"].isnumeric()
+            parsable_config = f"{parsable_config} {benchmark_config['max-tokens']}"
+        else:
+            parsable_config = f"{parsable_config} 128"  # default
+
+        if "repeat" in benchmark_config:
+            assert benchmark_config["repeat"].isnumeric()
+            parsable_config = f"{parsable_config} {benchmark_config['repeat']}"
+        else:
+            parsable_config = f"{parsable_config} 1"  # default
+
+        if "num-threads" in benchmark_config:
+            assert benchmark_config["num-threads"].isnumeric()
+            parsable_config = f"{parsable_config} {benchmark_config['num-threads']}"
+        else:
+            parsable_config = f"{parsable_config} 128"  # default
     else:
         assert False, benchmark_config["type"]
 
