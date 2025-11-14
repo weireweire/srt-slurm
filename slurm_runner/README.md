@@ -122,6 +122,21 @@ Specify benchmark config with `--benchmark`:
 
 Set `type=manual` to skip automated benchmarking.
 
+## Accuracy 
+Also specify accuracy benchmark config with `--benchmark`:
+
+```bash
+--benchmark "type=gpqa; num-examples=198; max-tokens=8192; repeat=8; num-threads=512"
+```
+- `type`: Benchmark type (`gpqa`, `mmlu`)
+- `num-examples`: Number of examples for testing
+- `max-tokens`: Maximum number of generated tokens. Might affect accuracy for gpqa dataset
+- `repeat`: Number of turns for benchmarking
+- `num-threads`: Concurrency of running test
+
+In the bottom it will call `sglang.test.run_eval` for testing gpqa/mmlu datasets.
+In the future other benchmark tools like lm_eval or nemo_skills can be added.
+
 ## Advanced
 
 ### Multiple Frontends
