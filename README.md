@@ -50,8 +50,10 @@ Store benchmark results in cloud storage (S3-compatible) and access them from an
 1. **Install dependencies:**
 
 ```bash
-pip install boto3
+pip install boto3 tomli
 ```
+
+(Note: `tomli` is only needed for Python < 3.11)
 
 2. **Create cloud config:**
 
