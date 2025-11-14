@@ -28,6 +28,8 @@ from datetime import datetime
 
 from jinja2 import Template
 
+from cluster_config import validate_cluster_settings, get_cluster_setting
+
 
 def print_welcome_message(job_ids: list[str], log_dir_name: str):
     """Print a clean welcome message with job information."""
@@ -140,7 +142,7 @@ def create_job_metadata(
             "script_variant": args.script_variant,
             "use_init_location": args.use_init_location,
             "enable_config_dump": args.enable_config_dump,
-            "use_dynamo_whls": args.use_dynamo_whls,
+            "use_dynamo_whls": True,  # Always true when config-dir is set
             "log_dir": args.log_dir if args.log_dir else "logs",
         },
         "profiler_metadata": benchmark_config,
@@ -201,12 +203,12 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
 
     # Template parameters
     parser.add_argument("--job-name", default="dynamo_setup", help="SLURM job name")
-    parser.add_argument("--account", required=True, help="SLURM account")
+    parser.add_argument("--account", default=None, help="SLURM account (or set in srtslurm.toml)")
     parser.add_argument("--model-dir", required=True, help="Model directory path")
     parser.add_argument("--config-dir", required=True, help="Config directory path")
     parser.add_argument("--container-image", required=True, help="Container image")
     parser.add_argument(
-        "--time-limit", default="04:00:00", help="Time limit (HH:MM:SS)"
+        "--time-limit", default=None, help="Time limit (default: 04:00:00 or from srtslurm.toml)"
     )
     parser.add_argument(
         "--prefill-nodes", type=int, default=None, help="Number of prefill nodes"
@@ -230,7 +232,7 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
         "--gpus-per-node", type=int, default=8, help="Number of GPUs per node"
     )
     parser.add_argument(
-        "--network-interface", default="eth3", help="Network interface to use"
+        "--network-interface", default=None, help="Network interface (or set in srtslurm.toml)"
     )
     parser.add_argument(
         "--gpu-type",
@@ -247,8 +249,8 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
 
     parser.add_argument(
         "--partition",
-        default="batch",
-        help="SLURM partition to use",
+        default=None,
+        help="SLURM partition (or set in srtslurm.toml)",
     )
     parser.add_argument(
         "--enable-multiple-frontends",
@@ -298,12 +300,6 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
     )
 
     parser.add_argument(
-        "--use-dynamo-whls",
-        action="store_true",
-        help="Use dynamo wheel files from config-dir and binaries from /configs/ for nats/etcd",
-    )
-
-    parser.add_argument(
         "--log-dir",
         type=str,
         default=None,
@@ -315,6 +311,18 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
 
 def _validate_args(args: argparse.Namespace) -> None:
     """Validate arguments and ensure aggregated and disaggregated args are mutually exclusive."""
+    # Validate cluster settings with config file fallback
+    try:
+        args.account, args.partition, args.network_interface = validate_cluster_settings(
+            args.account, args.partition, args.network_interface
+        )
+    except ValueError as e:
+        raise ValueError(f"Cluster configuration error: {e}")
+    
+    # Apply time limit default
+    if args.time_limit is None:
+        args.time_limit = get_cluster_setting("time_limit", None) or "04:00:00"
+    
     has_disagg_args = any(
         [
             args.prefill_nodes is not None,
@@ -538,7 +546,7 @@ def main(input_args: list[str] | None = None):
         "benchmark_arg": parsable_config,
         "timestamp": timestamp,
         "enable_config_dump": args.enable_config_dump,
-        "use_dynamo_whls": args.use_dynamo_whls,
+        "use_dynamo_whls": True,  # Always true when config-dir is set
         "log_dir_prefix": log_dir_prefix,
     }
 

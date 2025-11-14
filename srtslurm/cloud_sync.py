@@ -273,31 +273,29 @@ class CloudSyncManager:
             return False
 
 
-def load_cloud_config(config_path: str = "cloud_config.toml") -> dict | None:
+def load_cloud_config(config_path: str = "srtslurm.toml") -> dict | None:
     """Load cloud configuration from TOML file.
 
     Args:
-        config_path: Path to cloud_config.toml
+        config_path: Path to srtslurm.toml (or cloud_config.toml for backward compat)
 
     Returns:
         Dict with cloud config, or None if file doesn't exist
     """
-    try:
-        import tomli
-    except ImportError:
-        try:
-            import tomllib as tomli
-        except ImportError:
-            logger.error("tomli/tomllib required for config loading")
-            return None
-
+    import tomllib
+    
     config_file = Path(config_path)
     if not config_file.exists():
-        return None
+        # Try old config name for backward compatibility
+        old_path = Path("cloud_config.toml")
+        if old_path.exists():
+            config_file = old_path
+        else:
+            return None
 
     try:
         with open(config_file, "rb") as f:
-            config = tomli.load(f)
+            config = tomllib.load(f)
         return config.get("cloud", {})
     except Exception as e:
         logger.error(f"Failed to load cloud config: {e}")
@@ -305,12 +303,12 @@ def load_cloud_config(config_path: str = "cloud_config.toml") -> dict | None:
 
 
 def create_sync_manager_from_config(
-    config_path: str = "cloud_config.toml",
+    config_path: str = "srtslurm.toml",
 ) -> CloudSyncManager | None:
     """Create CloudSyncManager from config file.
 
     Args:
-        config_path: Path to cloud_config.toml
+        config_path: Path to srtslurm.toml
 
     Returns:
         CloudSyncManager instance, or None if config doesn't exist or is invalid

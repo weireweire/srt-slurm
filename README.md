@@ -6,30 +6,44 @@ Benchmarking toolkit for Dynamo and SGLang on SLURM.
 
 1. Run `make setup` to download the neccesary dynamo dependencies. This pulls in `nats` and `etcd` and the dynamo pip wheels. This allows you to use any container found on the [lmsys dockerhub](https://hub.docker.com/r/lmsysorg/sglang/tags) and use dynamo orchestration.
 
-2. Run your very first benchmark using the following python command. WIP to make this command much much shorter and possibly hold some of the common pieces in a configuration file.
+2. **Create `srtslurm.toml`** with your cluster settings (optional but recommended):
 
 ```bash
+cp srtslurm.toml.example srtslurm.toml
+# Edit with your cluster defaults (account, partition, network_interface, time_limit)
+```
+
+3. Run your first benchmark (much shorter now!):
+
+```bash
+# Minimal command (cluster settings from srtslurm.toml):
 python3 submit_job_script.py \
   --model-dir /mnt/lustre01/models/deepseek-r1-0528-fp4-v2 \
-  --container-image /mnt/lustre01/users/slurm-shared/ishan/lmsysorg+sglang+v0.5.5.post2.sqsh \
-  --gpus-per-node 4 \
-  --config-dir /mnt/lustre01/users/slurm-shared/ishan/srt-slurm/configs \
+  --container-image /mnt/lustre01/users/slurm-shared/ishan/1113/lmsysorg+sglang+v0.5.5.post2.sqsh \
+  --config-dir /mnt/lustre01/users/slurm-shared/ishan/config \
   --gpu-type gb200-fp4 \
-  --network-interface enP6p9s0np0 \
+  --gpus-per-node 4 \
   --prefill-nodes 1 \
   --decode-nodes 12 \
   --prefill-workers 1 \
   --decode-workers 1 \
+  --script-variant max-tpt \
+  --benchmark "type=sa-bench; isl=1024; osl=1024; concurrencies=1x8x32x128x512x1024x2048x4096x8192; req-rate=inf"
+
+# Or override cluster settings via CLI if needed:
+python3 submit_job_script.py \
   --account nvidia \
   --partition batch \
-  --time-limit 4:00:00 \
-  --enable-multiple-frontends \
-  --num-additional-frontends 9 \
-  --benchmark "type=sa-bench; isl=1024; osl=1024; concurrencies=1x8x32x128x512x1024x2048x4096x8192; req-rate=inf" \
-  --script-variant max-tpt \
-  --use-dynamo-whls \
-  --log-dir /mnt/lustre01/users-public/slurm-shared/joblogs
+  --network-interface enP6p9s0np0 \
+  ... # (rest same as above)
 ```
+
+**What's simplified:**
+
+- ✅ `--use-dynamo-whls` removed (auto-enabled when `--config-dir` is set)
+- ✅ `--log-dir` optional (defaults to `../logs`)
+- ✅ `--account`, `--partition`, `--network-interface` optional (read from `srtslurm.toml`)
+- ✅ `--time-limit` optional (defaults to `04:00:00` or from config)
 
 For more info on the submission script see [slurm_runner/README.md](slurm_runner/README.md)
 

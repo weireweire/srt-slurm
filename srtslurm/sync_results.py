@@ -16,10 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from srtslurm.cloud_sync import create_sync_manager_from_config
+from .cloud_sync import create_sync_manager_from_config
 
 # Setup logging
 logging.basicConfig(

@@ -1,4 +1,4 @@
-.PHONY: lint test setup-configs
+.PHONY: lint test setup-configs dashboard
 
 NATS_VERSION ?= v2.10.28
 ETCD_VERSION ?= v3.5.21
@@ -11,6 +11,9 @@ lint:
 
 test:
 	cd /Users/idhanani/Desktop/benchmarks/infbench && uv run python -m tests.test_basic && uv run python -m tests.test_aggregations
+
+dashboard:
+	uv run streamlit run dashboard/app.py
 
 setup:
 	@echo "📦 Setting up configs and logs directories..."

@@ -10,6 +10,10 @@ import streamlit as st
 from srtslurm import NodeAnalyzer, RunLoader
 from srtslurm.cloud_sync import create_sync_manager_from_config
 
+
+# Update default config path
+DEFAULT_CONFIG = "srtslurm.toml"
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +58,7 @@ def sync_cloud_data(logs_dir):
         Tuple of (sync_performed: bool, sync_count: int, error_message: str or None)
     """
     try:
-        sync_manager = create_sync_manager_from_config("cloud_config.toml")
+        sync_manager = create_sync_manager_from_config(DEFAULT_CONFIG)
         if sync_manager is None:
             # No cloud config, skip sync
             return False, 0, None
