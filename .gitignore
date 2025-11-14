@@ -33,6 +33,7 @@ uv.lock
 Thumbs.db
 
 # Cluster and cloud config (contains credentials and cluster-specific settings)
+srtslurm.yaml
 srtslurm.toml
 
 # Configs - ignore downloaded files but keep deepep_config.json

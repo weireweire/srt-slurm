@@ -171,8 +171,8 @@ def main():
     )
     parser.add_argument(
         "--config",
-        default="srtslurm.toml",
-        help="Path to config file (default: srtslurm.toml)",
+        default="srtslurm.yaml",
+        help="Path to config file (default: srtslurm.yaml)",
     )
     parser.add_argument(
         "--logs-dir",
@@ -211,7 +211,7 @@ def main():
     sync_manager = create_sync_manager_from_config(args.config)
     if not sync_manager:
         logger.error(f"Failed to load cloud config from {args.config}")
-        logger.error("Create srtslurm.toml from srtslurm.toml.example (or run 'make setup')")
+        logger.error("Create srtslurm.yaml from srtslurm.yaml.example (or run 'make setup')")
         return 1
 
     # Execute command

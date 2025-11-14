@@ -12,7 +12,7 @@ from srtslurm.cloud_sync import create_sync_manager_from_config
 
 
 # Update default config path
-DEFAULT_CONFIG = "srtslurm.toml"
+DEFAULT_CONFIG = "srtslurm.yaml"
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ Benchmarking toolkit for Dynamo and SGLang on SLURM.
 
 ## Run a benchmark
 
-1. **Run `make setup`** - Downloads dynamo dependencies (nats, etcd, wheels) and interactively creates `srtslurm.toml` with your cluster settings:
+1. **Run `make setup`** - Downloads dynamo dependencies (nats, etcd, wheels) and interactively creates `srtslurm.yaml` with your cluster settings:
 
 ```bash
 make setup
@@ -17,16 +17,16 @@ You'll be prompted for:
 - Network interface (e.g., `enP6p9s0np0`)
 - Default time limit (e.g., `4:00:00`)
 
-This creates `srtslurm.toml` automatically. You can also manually copy from the example:
+This creates `srtslurm.yaml` automatically. You can also manually copy from the example:
 
 ```bash
-cp srtslurm.toml.example srtslurm.toml
+cp srtslurm.yaml.example srtslurm.yaml
 ```
 
 3. Run your first benchmark (much shorter now!):
 
 ```bash
-# Minimal command (cluster settings + container from srtslurm.toml):
+# Minimal command (cluster settings + container from srtslurm.yaml):
 cd slurm_runner
 python3 submit_job_script.py \
   --model-dir /mnt/lustre01/models/deepseek-r1-0528-fp4-v2 \
@@ -52,9 +52,9 @@ python3 submit_job_script.py \
 
 - ✅ `--config-dir` optional (defaults to `../configs`)
 - ✅ `--log-dir` optional (defaults to `../logs`)
-- ✅ `--container-image` optional (read from `srtslurm.toml`)
-- ✅ `--account`, `--partition`, `--network-interface` optional (from `srtslurm.toml`)
-- ✅ `--time-limit` optional (from `srtslurm.toml` or `04:00:00`)
+- ✅ `--container-image` optional (read from `srtslurm.yaml`)
+- ✅ `--account`, `--partition`, `--network-interface` optional (from `srtslurm.yaml`)
+- ✅ `--time-limit` optional (from `srtslurm.yaml` or `04:00:00`)
 - ✅ `--use-dynamo-whls` removed (always enabled)
 
 For more info on the submission script see [slurm_runner/README.md](slurm_runner/README.md)
@@ -76,16 +76,18 @@ Store benchmark results in cloud storage (S3-compatible) and access them from an
 1. **Install dependencies:**
 
 ```bash
-pip install boto3 tomli
+pip install boto3
 ```
 
-2. **Edit `srtslurm.toml`** to add cloud storage settings:
+(Note: PyYAML is in stdlib on most clusters)
 
-```toml
-[cloud]
-endpoint_url = "https://your-s3-endpoint"
-bucket = "your-bucket-name"
-prefix = "benchmark-results/"
+2. **Edit `srtslurm.yaml`** to add cloud storage settings:
+
+```yaml
+cloud:
+  endpoint_url: "https://your-s3-endpoint"
+  bucket: "your-bucket-name"
+  prefix: "benchmark-results/"
 ```
 
 3. **Set credentials as environment variables:**

@@ -203,7 +203,7 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
 
     # Template parameters
     parser.add_argument("--job-name", default="dynamo_setup", help="SLURM job name")
-    parser.add_argument("--account", default=None, help="SLURM account (or set in srtslurm.toml)")
+    parser.add_argument("--account", default=None, help="SLURM account (or set in srtslurm.yaml)")
     parser.add_argument("--model-dir", required=True, help="Model directory path")
     parser.add_argument(
         "--config-dir",
@@ -213,10 +213,10 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
     parser.add_argument(
         "--container-image",
         default=None,
-        help="Container image (or set in srtslurm.toml)",
+        help="Container image (or set in srtslurm.yaml)",
     )
     parser.add_argument(
-        "--time-limit", default=None, help="Time limit (default: 04:00:00 or from srtslurm.toml)"
+        "--time-limit", default=None, help="Time limit (default: 04:00:00 or from srtslurm.yaml)"
     )
     parser.add_argument(
         "--prefill-nodes", type=int, default=None, help="Number of prefill nodes"
@@ -240,7 +240,7 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
         "--gpus-per-node", type=int, default=8, help="Number of GPUs per node"
     )
     parser.add_argument(
-        "--network-interface", default=None, help="Network interface (or set in srtslurm.toml)"
+        "--network-interface", default=None, help="Network interface (or set in srtslurm.yaml)"
     )
     parser.add_argument(
         "--gpu-type",
@@ -258,7 +258,7 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
     parser.add_argument(
         "--partition",
         default=None,
-        help="SLURM partition (or set in srtslurm.toml)",
+        help="SLURM partition (or set in srtslurm.yaml)",
     )
     parser.add_argument(
         "--enable-multiple-frontends",
@@ -427,7 +427,7 @@ def main(input_args: list[str] | None = None):
         args.container_image = get_cluster_setting("container_image", None)
         if args.container_image is None:
             raise ValueError(
-                "Container image must be specified via --container-image or [cluster].container_image in srtslurm.toml"
+                "Container image must be specified via --container-image or cluster.container_image in srtslurm.yaml"
             )
 
     # Validate arguments

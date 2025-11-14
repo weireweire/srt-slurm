@@ -3,17 +3,17 @@ Cluster configuration reader for SLURM settings
 """
 
 import logging
-import tomllib
+import yaml
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-def load_cluster_config(config_path: str = "srtslurm.toml") -> dict | None:
-    """Load cluster configuration from TOML file.
+def load_cluster_config(config_path: str = "srtslurm.yaml") -> dict | None:
+    """Load cluster configuration from YAML file.
 
     Args:
-        config_path: Path to srtslurm.toml
+        config_path: Path to srtslurm.yaml
 
     Returns:
         Dict with cluster config, or None if file doesn't exist
@@ -23,15 +23,15 @@ def load_cluster_config(config_path: str = "srtslurm.toml") -> dict | None:
         return None
 
     try:
-        with open(config_file, "rb") as f:
-            config = tomllib.load(f)
-        return config.get("cluster", {})
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+        return config.get("cluster", {}) if config else {}
     except Exception as e:
         logger.error(f"Failed to load cluster config: {e}")
         return None
 
 
-def get_cluster_setting(key: str, cli_value=None, config_path: str = "srtslurm.toml"):
+def get_cluster_setting(key: str, cli_value=None, config_path: str = "srtslurm.yaml"):
     """Get cluster setting with CLI override priority.
 
     Priority:
@@ -59,7 +59,7 @@ def get_cluster_setting(key: str, cli_value=None, config_path: str = "srtslurm.t
     return None
 
 
-def validate_cluster_settings(account, partition, network_interface, config_path="srtslurm.toml"):
+def validate_cluster_settings(account, partition, network_interface, config_path="srtslurm.yaml"):
     """Validate that required cluster settings are present.
 
     Args:
@@ -82,11 +82,11 @@ def validate_cluster_settings(account, partition, network_interface, config_path
     # Validate required settings
     missing = []
     if not final_account:
-        missing.append("--account (or [cluster].account in srtslurm.toml)")
+        missing.append("--account (or cluster.account in srtslurm.yaml)")
     if not final_partition:
-        missing.append("--partition (or [cluster].partition in srtslurm.toml)")
+        missing.append("--partition (or cluster.partition in srtslurm.yaml)")
     if not final_network_interface:
-        missing.append("--network-interface (or [cluster].network_interface in srtslurm.toml)")
+        missing.append("--network-interface (or cluster.network_interface in srtslurm.yaml)")
 
     if missing:
         raise ValueError(f"Missing required cluster settings: {', '.join(missing)}")

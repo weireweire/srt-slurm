@@ -273,37 +273,37 @@ class CloudSyncManager:
             return False
 
 
-def load_cloud_config(config_path: str = "srtslurm.toml") -> dict | None:
-    """Load cloud configuration from TOML file.
+def load_cloud_config(config_path: str = "srtslurm.yaml") -> dict | None:
+    """Load cloud configuration from YAML file.
 
     Args:
-        config_path: Path to srtslurm.toml
+        config_path: Path to srtslurm.yaml
 
     Returns:
         Dict with cloud config, or None if file doesn't exist
     """
-    import tomllib
+    import yaml
     
     config_file = Path(config_path)
     if not config_file.exists():
         return None
 
     try:
-        with open(config_file, "rb") as f:
-            config = tomllib.load(f)
-        return config.get("cloud", {})
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+        return config.get("cloud", {}) if config else {}
     except Exception as e:
         logger.error(f"Failed to load cloud config: {e}")
         return None
 
 
 def create_sync_manager_from_config(
-    config_path: str = "srtslurm.toml",
+    config_path: str = "srtslurm.yaml",
 ) -> CloudSyncManager | None:
     """Create CloudSyncManager from config file.
 
     Args:
-        config_path: Path to srtslurm.toml
+        config_path: Path to srtslurm.yaml
 
     Returns:
         CloudSyncManager instance, or None if config doesn't exist or is invalid

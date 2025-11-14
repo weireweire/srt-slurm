@@ -56,11 +56,11 @@ setup:
 	echo "✅ Done. Contents of configs directory:"; \
 	ls -lh configs/; \
 	echo ""; \
-	echo "⚙️  Setting up srtslurm.toml..."; \
-	if [ -f srtslurm.toml ]; then \
-		echo "ℹ️  srtslurm.toml already exists, skipping..."; \
+	echo "⚙️  Setting up srtslurm.yaml..."; \
+	if [ -f srtslurm.yaml ]; then \
+		echo "ℹ️  srtslurm.yaml already exists, skipping..."; \
 	else \
-		echo "Creating srtslurm.toml with your cluster settings..."; \
+		echo "Creating srtslurm.yaml with your cluster settings..."; \
 		echo ""; \
 		read -p "Enter SLURM account [restricted]: " account; \
 		account=$${account:-restricted}; \
@@ -73,20 +73,19 @@ setup:
 		read -p "Enter container image path (optional): " container; \
 		container=$${container:-}; \
 		echo ""; \
-		echo "# SRT SLURM Configuration" > srtslurm.toml; \
-		echo "" >> srtslurm.toml; \
-		echo "[cluster]" >> srtslurm.toml; \
-		echo "account = \"$$account\"" >> srtslurm.toml; \
-		echo "partition = \"$$partition\"" >> srtslurm.toml; \
-		echo "network_interface = \"$$network\"" >> srtslurm.toml; \
-		echo "time_limit = \"$$time_limit\"" >> srtslurm.toml; \
-		echo "container_image = \"$$container\"" >> srtslurm.toml; \
-		echo "" >> srtslurm.toml; \
-		echo "[cloud]" >> srtslurm.toml; \
-		echo "# S3-compatible cloud storage (optional)" >> srtslurm.toml; \
-		echo "endpoint_url = \"\"" >> srtslurm.toml; \
-		echo "bucket = \"\"" >> srtslurm.toml; \
-		echo "prefix = \"benchmark-results/\"" >> srtslurm.toml; \
-		echo "✅ Created srtslurm.toml"; \
-		echo "   You can edit it anytime or run: cp srtslurm.toml.example srtslurm.toml"; \
+		echo "# SRT SLURM Configuration" > srtslurm.yaml; \
+		echo "" >> srtslurm.yaml; \
+		echo "cluster:" >> srtslurm.yaml; \
+		echo "  account: \"$$account\"" >> srtslurm.yaml; \
+		echo "  partition: \"$$partition\"" >> srtslurm.yaml; \
+		echo "  network_interface: \"$$network\"" >> srtslurm.yaml; \
+		echo "  time_limit: \"$$time_limit\"" >> srtslurm.yaml; \
+		echo "  container_image: \"$$container\"" >> srtslurm.yaml; \
+		echo "" >> srtslurm.yaml; \
+		echo "cloud:" >> srtslurm.yaml; \
+		echo "  endpoint_url: \"\"" >> srtslurm.yaml; \
+		echo "  bucket: \"\"" >> srtslurm.yaml; \
+		echo "  prefix: \"benchmark-results/\"" >> srtslurm.yaml; \
+		echo "✅ Created srtslurm.yaml"; \
+		echo "   You can edit it anytime or run: cp srtslurm.yaml.example srtslurm.yaml"; \
 	fi
