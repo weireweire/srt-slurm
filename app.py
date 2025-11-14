@@ -503,10 +503,10 @@ def main():
     st.sidebar.header("Configuration")
 
     # Directory input
-    default_dir = os.path.dirname(os.path.abspath(__file__))
+    default_logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     logs_dir = st.sidebar.text_input(
         "Logs Directory Path",
-        value=default_dir,
+        value=default_logs_dir,
         help="Path to the directory containing benchmark log folders",
     )
 
@@ -514,37 +514,7 @@ def main():
         st.error(f"Directory not found: {logs_dir}")
         return
 
-    # Cloud sync status in sidebar
-    with st.sidebar:
-        st.divider()
-        st.subheader("☁️ Cloud Sync")
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            auto_sync = st.checkbox("Auto-sync on load", value=True, help="Automatically pull missing runs from cloud storage")
-        with col2:
-            if st.button("🔄", help="Manually sync now"):
-                # Clear cache and force sync
-                load_data.clear()
-                st.session_state["force_sync"] = True
-                st.rerun()
-        
-        # Perform sync if enabled
-        if auto_sync or st.session_state.get("force_sync", False):
-            st.session_state["force_sync"] = False
-            
-            with st.spinner("Syncing from cloud storage..."):
-                sync_performed, sync_count, error = sync_cloud_data(logs_dir)
-                
-            if sync_performed:
-                if error:
-                    st.error(f"Sync failed: {error}")
-                elif sync_count > 0:
-                    st.success(f"Downloaded {sync_count} new run(s)")
-                else:
-                    st.info("All runs up to date")
-        
-        st.divider()
+    st.sidebar.divider()
 
     # Load data
     with st.spinner("Loading benchmark data..."):
@@ -768,6 +738,8 @@ def main():
     # Get dataframe - use helper function to convert dicts
     df = _runs_to_dataframe(filtered_runs)
 
+    st.sidebar.divider()
+
     # Pareto options
     st.sidebar.header("Pareto Graph Options")
     show_cutoff = st.sidebar.checkbox("Show TPS/User cutoff line", value=False)
@@ -785,6 +757,41 @@ def main():
         value=False,
         help="Highlight the efficient frontier - points where no other configuration is strictly better",
     )
+
+    st.sidebar.divider()
+
+    # Cloud sync
+    st.sidebar.header("Cloud Sync")
+    
+    auto_sync = st.sidebar.checkbox(
+        "☁️ Auto-sync on load",
+        value=False,
+        help="Automatically pull missing runs from cloud storage on startup"
+    )
+    
+    if st.sidebar.button("🔄 Sync Now", use_container_width=True):
+        # Clear cache and force sync
+        load_data.clear()
+        st.session_state["force_sync"] = True
+        st.rerun()
+    
+    # Perform sync if enabled
+    if auto_sync or st.session_state.get("force_sync", False):
+        st.session_state["force_sync"] = False
+        
+        with st.spinner("Syncing from cloud storage..."):
+            sync_performed, sync_count, error = sync_cloud_data(logs_dir)
+            
+        if sync_performed:
+            if error:
+                st.sidebar.error(f"Sync failed: {error}")
+            elif sync_count > 0:
+                st.sidebar.success(f"✓ Downloaded {sync_count} new run(s)")
+            else:
+                st.sidebar.info("✓ All runs up to date")
+        else:
+            # No cloud config found
+            st.sidebar.info("💡 Cloud sync not configured")
 
     # Summary metrics
     st.header("Summary")
