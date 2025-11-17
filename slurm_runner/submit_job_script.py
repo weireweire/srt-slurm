@@ -602,10 +602,11 @@ def main(input_args: list[str] | None = None):
     else:
         template_path = "job_script_template_disagg.j2"
 
-    # For profiling, always enable multiple frontends with 1 additional frontend (2 total)
+    # For profiling, always enable multiple frontends infrastructure (nginx + 1 frontend with NATS/ETCD)
+    # WIP: Only primary frontend is launched for simplicity. Additional frontends disabled.
     if args.sglang_torch_profiler:
         enable_multiple_frontends_final = True
-        num_additional_frontends_final = 1
+        num_additional_frontends_final = 0  # Only primary frontend + NATS/ETCD
     else:
         enable_multiple_frontends_final = args.enable_multiple_frontends
         num_additional_frontends_final = args.num_additional_frontends

@@ -208,24 +208,10 @@ cmd="srun --overlap $ENROOT_ARGS --nodes=1 --ntasks=1 --nodelist=$MASTER_NODE --
 echo "$cmd"
 $cmd &
 
-# Launch additional frontends on designated nodes
-if [ "$ADDITIONAL_FRONTENDS" -gt 0 ]; then
-    frontend_idx=1  # Start from 1 since node 1 is frontend 0
-    nodes_per_frontend=$(( (TOTAL_NODES - 2 + ADDITIONAL_FRONTENDS - 1) / ADDITIONAL_FRONTENDS ))
-    frontend_node_idx=2
-
-    for i in $(seq 1 $ADDITIONAL_FRONTENDS); do
-        if [ $frontend_node_idx -lt $TOTAL_NODES ]; then
-            node=${nodes[$frontend_node_idx]}
-            echo "Launching additional frontend $frontend_idx on node $frontend_node_idx: $node"
-            cmd="srun --overlap $ENROOT_ARGS --nodes=1 --ntasks=1 --nodelist=$node --output=${LOG_DIR}/${node}_frontend_${frontend_idx}.out --error=${LOG_DIR}/${node}_frontend_${frontend_idx}.err python /scripts/worker_setup.py --worker_type frontend --worker_idx ${frontend_idx} ${WORKER_ARGS}"
-            echo "$cmd"
-            $cmd &
-            frontend_idx=$((frontend_idx + 1))
-            frontend_node_idx=$((frontend_node_idx + nodes_per_frontend))
-        fi
-    done
-fi
+# WIP: Additional frontends removed for simplicity during profiling.
+# For now keeping single frontend architecture (nginx + 1 frontend with NATS/ETCD)
+# to make worker_setup flow easier to follow. Can be re-enabled later if needed.
+# The infrastructure is setup but only the primary frontend is launched.
 {% endraw %}
 {% else %}
 {% raw %}
