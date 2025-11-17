@@ -320,10 +320,22 @@ srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $AGG_LEADER_NODE
 {% endraw %}
 {% endif %}
 
+{% if sglang_torch_profiler %}
 {% raw %}
+# Wait for profiling script to complete
+echo "Waiting for profiling script to complete..."
+wait
+exit_code=$?
+echo "Profiling script finished at $(date) with exit code ${exit_code}"
+exit $exit_code
+{% endraw %}
+{% else %}
+{% raw %}
+# Wait for first task to complete
 wait -n
 first_exit_code=$?
 echo "Script finished at $(date) with exit code ${first_exit_code}"
 exit $first_exit_code
 {% endraw %}
+{% endif %}
 
