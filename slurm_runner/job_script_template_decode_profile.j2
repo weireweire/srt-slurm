@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --account={{ account }}
 #SBATCH --time={{ time_limit }}
-#SBATCH --output={{ log_dir_prefix }}/%j_{{ decode_workers }}P_profile_{{ timestamp }}/log.out
-#SBATCH --error={{ log_dir_prefix }}/%j_{{ decode_workers }}P_profile_{{ timestamp }}/log.err
+#SBATCH --output={{ log_dir_prefix }}/%j_{{ decode_workers }}D_profile_{{ timestamp }}/log.out
+#SBATCH --error={{ log_dir_prefix }}/%j_{{ decode_workers }}D_profile_{{ timestamp }}/log.err
 #SBATCH --partition={{ partition }}
 
 # Decode Profiling Job
@@ -17,9 +17,9 @@ GPUS_PER_NODE={{ gpus_per_node }}
 TOTAL_GPUS=$((DECODE_NODES * GPUS_PER_NODE))
 DECODE_NODES_PER_WORKER=$((DECODE_NODES / DECODE_WORKERS))
 {% if log_dir_prefix.startswith('/') %}
-LOG_DIR="{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ decode_workers }}P_profile_{{ timestamp }}"
+LOG_DIR="{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ decode_workers }}D_profile_{{ timestamp }}"
 {% else %}
-LOG_DIR="${SLURM_SUBMIT_DIR}/{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ decode_workers }}P_profile_{{ timestamp }}"
+LOG_DIR="${SLURM_SUBMIT_DIR}/{{ log_dir_prefix }}/${SLURM_JOB_ID}_{{ decode_workers }}D_profile_{{ timestamp }}"
 {% endif %}
 SCRIPT_DIR="${SLURM_SUBMIT_DIR}/scripts"
 OUTPUT_DIR="${SLURM_SUBMIT_DIR}/outputs"
