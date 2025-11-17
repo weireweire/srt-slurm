@@ -312,6 +312,8 @@ def _validate_args(args: argparse.Namespace) -> None:
     """Validate arguments and ensure aggregated and disaggregated args are mutually exclusive."""
     # Validate profiling mode constraints
     if args.sglang_torch_profiler:
+        # disable config dump because we use stock sglang command
+        args.enable_config_dump = False
         if args.benchmark:
             raise ValueError(
                 "Cannot specify both --sglang-torch-profiler and --benchmark. "
