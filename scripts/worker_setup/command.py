@@ -56,6 +56,8 @@ def build_sglang_command_from_yaml(
     env_exports = []
     for key, value in env_vars.items():
         env_exports.append(f"export {key}={value}")
+    if use_profiling:
+        env_exports.append(f"export SGLANG_TORCH_PROFILER_DIR=/logs/profiles/{config_key}")
 
     # Determine Python module based on profiling mode
     python_module = "sglang.launch_server" if use_profiling else "dynamo.sglang"

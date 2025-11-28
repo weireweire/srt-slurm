@@ -62,8 +62,7 @@ else
 fi
 
 # Create profiling output directory
-result_dir="${SGLANG_TORCH_PROFILER_DIR}/${PROFILING_MODE}"
-mkdir -p /logs/profiles/${PROFILING_MODE} 2>/dev/null || true
+mkdir -p ${SGLANG_TORCH_PROFILER_DIR} 2>/dev/null || true
 
 echo "Running torch profiler..."
 echo "$(date '+%Y-%m-%d %H:%M:%S')"

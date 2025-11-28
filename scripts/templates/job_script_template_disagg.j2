@@ -365,12 +365,12 @@ echo "Decode profiling will run on: $DECODE_LEADER_NODE"
 # Run prefill profiling on first prefill worker's leader node
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $PREFILL_LEADER_NODE \
     --output=${LOG_DIR}/profile_prefill.out --error=${LOG_DIR}/profile_prefill.err --overlap \
-    bash -c "PROFILING_MODE=prefill SGLANG_TORCH_PROFILER_DIR=/logs/profiles /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILING_MODE=prefill SGLANG_TORCH_PROFILER_DIR=/logs/profiles/prefill /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 
 # Run decode profiling on first decode worker's leader node
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $DECODE_LEADER_NODE \
     --output=${LOG_DIR}/profile_decode.out --error=${LOG_DIR}/profile_decode.err --overlap \
-    bash -c "PROFILING_MODE=decode SGLANG_TORCH_PROFILER_DIR=/logs/profiles /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILING_MODE=decode SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
 
