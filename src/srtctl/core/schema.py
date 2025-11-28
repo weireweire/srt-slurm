@@ -162,6 +162,32 @@ class BenchmarkConfig(BaseModel):
     req_rate: Optional[str] = Field("inf", description="Request rate")
 
 
+class ProfilingType(str, Enum):
+    """Supported profiling types."""
+
+    NSYS = "nsys"
+    TORCH = "torch"
+    NONE = "none"
+
+
+class ProfilingPhaseConfig(BaseModel):
+    """Per-phase profiling parameters."""
+
+    isl: Optional[int] = Field(None, description="Input sequence length")
+    osl: Optional[int] = Field(None, description="Output sequence length")
+    concurrency: Optional[int] = Field(None, description="Batch size / concurrency")
+    start_step: Optional[int] = Field(None, description="Profiling start step")
+    stop_step: Optional[int] = Field(None, description="Profiling stop step")
+
+
+class ProfilingConfig(BaseModel):
+    """Profiling configuration."""
+
+    type: ProfilingType = Field(ProfilingType.NONE, description="Profiling type")
+    prefill: Optional[ProfilingPhaseConfig] = None
+    decode: Optional[ProfilingPhaseConfig] = None
+
+
 class SGLangPrefillConfig(BaseModel):
     """SGLang prefill worker configuration.
 
@@ -217,12 +243,6 @@ class BackendConfig(BaseModel):
     enable_multiple_frontends: bool = True
     num_additional_frontends: int = 9
 
-    # Profiling settings
-    enable_profiling: bool = Field(
-        False,
-        description="Enable torch profiling mode (uses sglang.launch_server instead of dynamo.sglang)",
-    )
-
 
 class JobConfig(BaseModel):
     """Complete job configuration."""
@@ -235,6 +255,7 @@ class JobConfig(BaseModel):
     slurm: SlurmConfig = Field(default_factory=SlurmConfig)
     backend: Optional[BackendConfig] = None  # Auto-populated
     benchmark: BenchmarkConfig = Field(default_factory=BenchmarkConfig)
+    profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
 
     # Additional optional settings
     enable_config_dump: bool = True
@@ -275,8 +296,11 @@ class JobConfig(BaseModel):
 
     def _validate_profiling_mode(self) -> None:
         """Validate profiling mode constraints."""
-        if not self.backend or not self.backend.enable_profiling:
+        prof = getattr(self, "profiling", None)
+        if not prof or prof.type in (ProfilingType.NONE, None):
             return
+        if prof.type == ProfilingType.NSYS:
+            raise ValueError("Profiling type 'nsys' is not supported yet")
 
         # Auto-disable config dump when profiling (already handled in backend, but validate here too)
         if self.enable_config_dump:

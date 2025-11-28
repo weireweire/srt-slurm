@@ -44,22 +44,17 @@ wait_until_ready() {
 }
 wait_until_ready "http://${head_node}:${head_port}"
 
-# Determine profiling parameters based on mode
-if [[ "${PROFILING_MODE}" == "prefill" ]]; then
-    # Prefill profiling: smaller batch, long input, short output
-    BATCH_SIZE=24
-    INPUT_LEN=1024
-    OUTPUT_LEN=2
-    PROFILE_STEPS_ARG=""
-    echo "Running prefill profiling with batch=${BATCH_SIZE}, input_len=${INPUT_LEN}, output_len=${OUTPUT_LEN}"
-else
-    # Decode profiling: large batch, short input, longer output with profile steps
-    BATCH_SIZE=1024
-    INPUT_LEN=8
-    OUTPUT_LEN=16
-    PROFILE_STEPS_ARG="--profile-steps 16"
-    echo "Running decode profiling with batch=${BATCH_SIZE}, input_len=${INPUT_LEN}, output_len=${OUTPUT_LEN}, profile_steps=16"
-fi
+# Determine profiling parameters strictly from environment (no internal defaults)
+PROFILE_STEPS_ARG=""
+CLI_ARGS=""
+[[ -n "${PROFILE_CONCURRENCY}" ]] && CLI_ARGS+=" --batch-size ${PROFILE_CONCURRENCY}"
+[[ -n "${PROFILE_ISL}" ]] && CLI_ARGS+=" --input-len ${PROFILE_ISL}"
+[[ -n "${PROFILE_OSL}" ]] && CLI_ARGS+=" --output-len ${PROFILE_OSL}"
+
+[[ -n "${PROFILE_STOP_STEP}" ]] && PROFILE_STEPS_ARG+=" --profile-steps $((PROFILE_STOP_STEP-0))"
+#[[ -n "${PROFILE_START_STEP}" ]] && PROFILE_STEPS_ARG+=" --profile-start ${PROFILE_START_STEP}" # start step is not supported yet
+
+echo "Running ${PROFILING_MODE} profiling with${CLI_ARGS} ${PROFILE_STEPS_ARG}"
 
 # Create profiling output directory
 mkdir -p ${SGLANG_TORCH_PROFILER_DIR} 2>/dev/null || true
@@ -71,9 +66,7 @@ set -x
 python3 -m sglang.bench_one_batch_server \
     --model ${model_name} \
     --base-url http://${head_node}:${head_port} \
-    --batch-size ${BATCH_SIZE} \
-    --input-len ${INPUT_LEN} \
-    --output-len ${OUTPUT_LEN} \
+    ${CLI_ARGS} \
     ${PROFILE_STEPS_ARG} \
     --profile
 exit_code=$?
