@@ -101,12 +101,13 @@ class SGLangBackend(Backend):
         for key, val in env_vars.items():
             lines.append(f"{key}={val} \\")
 
-        # Python command - use sglang.launch_server for torch profiling, dynamo.sglang otherwise
+        # Python command - use sglang.launch_server when profiler != none, dynamo.sglang otherwise
         profiling_type = (self.config.get("profiling") or {}).get("type", "none")
-        if profiling_type == "torch":
+        nsys_prefix = "nsys profile -t cuda,nvtx --cuda-graph-trace=node -c cudaProfilerApi --capture-range-end stop --force-overwrite true"
+        if profiling_type == "nsys":
+            lines.append(f"{nsys_prefix} python3 -m sglang.launch_server \\")
+        elif profiling_type == "torch":
             lines.append("python3 -m sglang.launch_server \\")
-        elif profiling_type == "nsys":
-            raise ValueError("Profiling type 'nsys' is not supported yet")
         else:
             lines.append("python3 -m dynamo.sglang \\")
 
@@ -142,7 +143,7 @@ class SGLangBackend(Backend):
             flag_name = key.replace("_", "-")
 
             # Skip disaggregation-mode flag when profiling (sglang.launch_server doesn't accept it)
-            if profiling_type == "torch" and flag_name == "disaggregation-mode":
+            if profiling_type in ("torch", "nsys") and flag_name == "disaggregation-mode":
                 continue
 
             if isinstance(value, bool):
@@ -189,9 +190,9 @@ class SGLangBackend(Backend):
         # Get value from config (defaults to True in schema)
         enable_config_dump = self.config.get("enable_config_dump", True)
 
-        # Auto-disable when torch profiling is enabled (unless explicitly set to True)
+        # Auto-disable when profiling is enabled (unless explicitly set to True)
         profiling_type = (self.config.get("profiling") or {}).get("type", "none")
-        if profiling_type == "torch":
+        if profiling_type != "none":
             # When profiling, disable config dump by default
             # User can explicitly set enable_config_dump: true to override
             return False
@@ -302,7 +303,7 @@ class SGLangBackend(Backend):
         prefill_profile_env = build_env_str(prefill_cfg)
         decode_profile_env = build_env_str(decode_cfg)
 
-        enable_torch_profiler = (profiling_cfg.get("type") == "torch")
+        profiler_mode = profiling_cfg.get("type", "none")
 
         # Template variables
         template_vars = {
@@ -334,7 +335,7 @@ class SGLangBackend(Backend):
             # Auto-disabled when profiling unless explicitly enabled
             "enable_config_dump": self._get_enable_config_dump(),
             "log_dir_prefix": str(log_dir_path),  # Absolute path to logs directory
-            "enable_torch_profiler": enable_torch_profiler,
+            "profiler": profiler_mode,
             "prefill_profile_env": prefill_profile_env,
             "decode_profile_env": decode_profile_env,
             "setup_script": self.setup_script,

@@ -44,31 +44,60 @@ wait_until_ready() {
 }
 wait_until_ready "http://${head_node}:${head_port}"
 
-# Determine profiling parameters strictly from environment (no internal defaults)
+# Determine profiling parameters strictly from environment 
 PROFILE_STEPS_ARG=""
 CLI_ARGS=""
 [[ -n "${PROFILE_CONCURRENCY}" ]] && CLI_ARGS+=" --batch-size ${PROFILE_CONCURRENCY}"
-[[ -n "${PROFILE_ISL}" ]] && CLI_ARGS+=" --input-len ${PROFILE_ISL}"
-[[ -n "${PROFILE_OSL}" ]] && CLI_ARGS+=" --output-len ${PROFILE_OSL}"
+# Require ISL/OSL to be provided; do not pass them as CLI args here
+if [[ -z "${PROFILE_ISL}" || -z "${PROFILE_OSL}" ]]; then
+    echo "Error: isl and osl must be set for profiling."
+    exit 1
+fi
 
-[[ -n "${PROFILE_STOP_STEP}" ]] && PROFILE_STEPS_ARG+=" --profile-steps $((PROFILE_STOP_STEP-0))"
-#[[ -n "${PROFILE_START_STEP}" ]] && PROFILE_STEPS_ARG+=" --profile-start ${PROFILE_START_STEP}" # start step is not supported yet
+# Configure profiling steps range; set defaults independently if missing
+if [[ -z "${PROFILE_START_STEP}" ]]; then
+    echo "Warning: PROFILE_START_STEP not set; defaulting to 0"
+    PROFILE_START_STEP=0
+fi
+if [[ -z "${PROFILE_STOP_STEP}" ]]; then
+    echo "Warning: PROFILE_STOP_STEP not set; defaulting to 50"
+    PROFILE_STOP_STEP=50
+fi
 
-echo "Running ${PROFILING_MODE} profiling with${CLI_ARGS} ${PROFILE_STEPS_ARG}"
 
-# Create profiling output directory
-mkdir -p ${SGLANG_TORCH_PROFILER_DIR} 2>/dev/null || true
 
-echo "Running torch profiler..."
+# Create profiling output directory only when torch profiler dir is provided
+PROFILE_FLAG=""
+if [[ -n "${SGLANG_TORCH_PROFILER_DIR}" ]]; then
+    mkdir -p "${SGLANG_TORCH_PROFILER_DIR}" 2>/dev/null || true
+    export SGLANG_TORCH_PROFILER_DIR=${SGLANG_TORCH_PROFILER_DIR}
+    if [[ "${PROFILE_START_STEP}" != "0" ]]; then
+        echo "Warning: PROFILE_START_STEP is set to ${PROFILE_START_STEP}; Torch profiler only supports running from step 0. Setting to 0."
+        PROFILE_START_STEP=0
+    fi
+    PROFILE_FLAG="--profile --profile-num-steps $PROFILE_STOP_STEP"
+else
+    curl -X POST http://${head_node}:${head_port}/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": [\"CUDA_PROFILER\"]}"
+    mkdir -p "/logs/profiles" 2>/dev/null || true
+fi
+
+echo "Running profiler..."
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
 
 set -x
-python3 -m sglang.bench_one_batch_server \
-    --model ${model_name} \
-    --base-url http://${head_node}:${head_port} \
-    ${CLI_ARGS} \
-    ${PROFILE_STEPS_ARG} \
-    --profile
+python3 -m sglang.bench_serving \
+--backend sglang \
+--model ${model_name} \
+--host ${head_node} --port ${head_port} \
+--dataset-name random \
+--max-concurrency $PROFILE_CONCURRENCY \
+--num-prompts 128 \
+--random-input-len $PROFILE_ISL \
+--random-output-len $PROFILE_OSL \
+--random-range-ratio 1 \
+--warmup-request 10 \
+${PROFILE_FLAG}
+
 exit_code=$?
 set +x
 

@@ -15,7 +15,7 @@ def build_sglang_command_from_yaml(
     port: int,
     total_nodes: int,
     rank: int,
-    use_profiling: bool = False,
+    profiler: str = "none",
     dump_config_path: str | None = None,
 ) -> str:
     """Build SGLang command using native YAML config support.
@@ -33,7 +33,7 @@ def build_sglang_command_from_yaml(
         port: Port for distributed coordination
         total_nodes: Total number of nodes
         rank: Node rank (0-indexed)
-        use_profiling: Whether to use sglang.launch_server (profiling mode)
+        profiler: Profiling method: "none", "torch", or "nsys"
 
     Returns:
         Full command string ready to execute
@@ -54,16 +54,17 @@ def build_sglang_command_from_yaml(
     env_exports = []
     for key, value in env_vars.items():
         env_exports.append(f"export {key}={value}")
-    if use_profiling:
+    if profiler == "torch":
         env_exports.append(f"export SGLANG_TORCH_PROFILER_DIR=/logs/profiles/{config_key}")
 
     # Determine Python module based on profiling mode
-    python_module = "sglang.launch_server" if use_profiling else "dynamo.sglang"
+    python_module = "sglang.launch_server" if profiler != "none" else "dynamo.sglang"
+    nsys_prefix=f"nsys profile -t cuda,nvtx --cuda-graph-trace=node -c cudaProfilerApi --capture-range-end stop --force-overwrite true -o /logs/profiles/{config_key}_nsys"
 
-    if use_profiling:
+    if profiler != "none":
         # Profiling mode: inline all flags (sglang.launch_server doesn't support --config)
         mode_config = sglang_config.get(config_key, {})
-        cmd_parts = [f"python3 -m {python_module}"]
+        cmd_parts = [f"python3 -m {python_module}"] if profiler != "nsys" else [f"{nsys_prefix} python3 -m {python_module}"]
 
         # Add all SGLang flags from config
         for key, value in sorted(mode_config.items()):
@@ -145,7 +146,7 @@ def get_gpu_command(
     port: int,
     total_nodes: int,
     rank: int,
-    use_profiling: bool = False,
+    profiler: str = "none",
     dump_config_path: str | None = None,
 ) -> str:
     """Generate command to run SGLang worker using YAML config.
@@ -157,7 +158,7 @@ def get_gpu_command(
         port: Port for distributed coordination
         total_nodes: Total number of nodes
         rank: Node rank (0-indexed)
-        use_profiling: Whether to use sglang.launch_server (profiling mode)
+        profiler: Profiling method: "none", "torch", or "nsys"
 
     Returns:
         Command string to execute
@@ -167,5 +168,5 @@ def get_gpu_command(
 
     logging.info(f"Building command from YAML config: {sglang_config_path}")
     return build_sglang_command_from_yaml(
-        worker_type, sglang_config_path, host_ip, port, total_nodes, rank, use_profiling, dump_config_path
+        worker_type, sglang_config_path, host_ip, port, total_nodes, rank, profiler, dump_config_path
     )

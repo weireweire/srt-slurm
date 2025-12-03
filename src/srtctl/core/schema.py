@@ -299,8 +299,6 @@ class JobConfig(BaseModel):
         prof = getattr(self, "profiling", None)
         if not prof or prof.type in (ProfilingType.NONE, None):
             return
-        if prof.type == ProfilingType.NSYS:
-            raise ValueError("Profiling type 'nsys' is not supported yet")
 
         # Auto-disable config dump when profiling (already handled in backend, but validate here too)
         if self.enable_config_dump:

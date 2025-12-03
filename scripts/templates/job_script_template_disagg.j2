@@ -189,12 +189,10 @@ WORKER_ARGS="--gpu_type ${GPU_TYPE} --gpus_per_node ${GPUS_PER_NODE} --master_ip
 WORKER_ARGS="$WORKER_ARGS --multiple-frontends-enabled"
 {% endraw %}
 {% endif %}
-{% if enable_torch_profiler %}
 {% raw %}
-# Enable torch profiling mode
-WORKER_ARGS="$WORKER_ARGS --sglang-torch-profiler"
+# Set profiler mode from config
+WORKER_ARGS="$WORKER_ARGS --profiler {% endraw %}{{ profiler }}{% raw %}"
 {% endraw %}
-{% endif %}
 {% raw %}
 # Add SGLang config path (mounted in container at /logs/)
 WORKER_ARGS="$WORKER_ARGS --sglang-config-path /logs/sglang_config.yaml"
@@ -349,10 +347,10 @@ srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w ${nodes[0]} --ou
 {% endraw %}
 {% endif %}
 
-{% if enable_torch_profiler %}
+{% if profiler != 'none' %}
 {% raw %}
 # Torch profiling mode: run profiling on prefill and decode workers separately
-echo "Starting torch profiling..."
+echo "Starting profiler..."
 
 # Get leader nodes for first prefill and decode workers
 PREFILL_LEADER_NODE=${nodes[${prefill_leaders[0]}]}
@@ -364,16 +362,16 @@ echo "Decode profiling will run on: $DECODE_LEADER_NODE"
 # Run prefill profiling on first prefill worker's leader node
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $PREFILL_LEADER_NODE \
     --output=${LOG_DIR}/profile_prefill.out --overlap \
-    bash -c "PROFILING_MODE=prefill SGLANG_TORCH_PROFILER_DIR=/logs/profiles/prefill {% endraw %}{{ prefill_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILING_MODE=prefill {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/prefill {% endif %}{{ prefill_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 
 # Run decode profiling on first decode worker's leader node
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $DECODE_LEADER_NODE \
     --output=${LOG_DIR}/profile_decode.out  --overlap \
-    bash -c "PROFILING_MODE=decode SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endraw %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILING_MODE=decode {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endif %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
 
-{% if enable_torch_profiler %}
+{% if profiler != 'none' %}
 {% raw %}
 # Wait for all profiling scripts to complete (both prefill and decode)
 echo "Waiting for all profiling scripts to complete..."

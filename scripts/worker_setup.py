@@ -103,9 +103,11 @@ def _parse_command_line_args(args: list[str] | None = None) -> argparse.Namespac
     )
 
     parser.add_argument(
-        "--sglang-torch-profiler",
-        action="store_true",
-        help="Enable torch profiling mode: use sglang.launch_server and skip --disaggregation-mode",
+        "--profiler",
+        type=str,
+        choices=["none", "torch", "nsys"],
+        default="none",
+        help="Profiling method for workers",
     )
 
     parser.add_argument(
@@ -182,7 +184,7 @@ def main(input_args: list[str] | None = None):
             args.nodes_per_worker,
             args.gpu_type,
             args.multiple_frontends_enabled,
-            args.sglang_torch_profiler,
+            args.profiler,
             args.sglang_config_path,
             args.dump_config_path,
             args.setup_script,
@@ -195,7 +197,7 @@ def main(input_args: list[str] | None = None):
             args.master_ip,
             args.nodes_per_worker,
             args.gpu_type,
-            args.sglang_torch_profiler,
+            args.profiler,
             args.sglang_config_path,
             args.dump_config_path,
             args.setup_script,
@@ -209,7 +211,7 @@ def main(input_args: list[str] | None = None):
             args.nodes_per_worker,
             args.gpu_type,
             args.multiple_frontends_enabled,
-            args.sglang_torch_profiler,
+            args.profiler,
             args.sglang_config_path,
             args.dump_config_path,
             args.setup_script,

@@ -189,12 +189,10 @@ WORKER_ARGS="--gpu_type ${GPU_TYPE} --gpus_per_node ${GPUS_PER_NODE} --master_ip
 WORKER_ARGS="$WORKER_ARGS --multiple-frontends-enabled"
 {% endraw %}
 {% endif %}
-{% if enable_torch_profiler %}
 {% raw %}
-# Enable torch profiling mode
-WORKER_ARGS="$WORKER_ARGS --sglang-torch-profiler"
+# Set profiler mode from config
+WORKER_ARGS="$WORKER_ARGS --profiler {% endraw %}{{ profiler }}{% raw %}"
 {% endraw %}
-{% endif %}
 {% raw %}
 # Add SGLang config path (mounted in container at /logs/)
 WORKER_ARGS="$WORKER_ARGS --sglang-config-path /logs/sglang_config.yaml"
@@ -322,7 +320,7 @@ srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w ${nodes[0]} --ou
 {% endraw %}
 {% endif %}
 
-{% if enable_torch_profiler %}
+{% if profiler != 'none' %}
 
 {% raw %}
 # Torch profiling mode for aggregated workers
@@ -337,11 +335,11 @@ echo "Aggregated profiling will run on: $AGG_LEADER_NODE"
 # Use "decode" mode for aggregated since it profiles the full generation pipeline
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $AGG_LEADER_NODE \
     --output=${LOG_DIR}/profile_aggregated.out --overlap \
-    bash -c "PROFILING_MODE=decode SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endraw %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh 0 $AGG_WORKERS 0 $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILING_MODE=decode {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endif %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh 0 $AGG_WORKERS 0 $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
 
-{% if enable_torch_profiler %}
+{% if profiler != 'none' %}
 {% raw %}
 # Wait for profiling script to complete
 echo "Waiting for profiling script to complete..."
