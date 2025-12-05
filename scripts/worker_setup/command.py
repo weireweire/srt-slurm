@@ -59,12 +59,16 @@ def build_sglang_command_from_yaml(
 
     # Determine Python module based on profiling mode
     python_module = "sglang.launch_server" if profiler != "none" else "dynamo.sglang"
-    nsys_prefix=f"nsys profile -t cuda,nvtx --cuda-graph-trace=node -c cudaProfilerApi --capture-range-end stop --force-overwrite true -o /logs/profiles/{config_key}_nsys"
+    nsys_prefix=f"nsys profile -t cuda,nvtx --cuda-graph-trace=node -c cudaProfilerApi --capture-range-end stop --force-overwrite true -o /logs/profiles/{config_key}_{rank}"
 
     if profiler != "none":
         # Profiling mode: inline all flags (sglang.launch_server doesn't support --config)
         mode_config = sglang_config.get(config_key, {})
-        cmd_parts = [f"python3 -m {python_module}"] if profiler != "nsys" else [f"{nsys_prefix} python3 -m {python_module}"]
+        # Wrap with NSYS on all ranks; outputs are isolated per-rank
+        if profiler == "nsys":
+            cmd_parts = [f"{nsys_prefix} python3 -m {python_module}"]
+        else:
+            cmd_parts = [f"python3 -m {python_module}"]
 
         # Add all SGLang flags from config
         for key, value in sorted(mode_config.items()):

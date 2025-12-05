@@ -65,26 +65,24 @@ if [[ -z "${PROFILE_STOP_STEP}" ]]; then
 fi
 
 
-
-# Create profiling output directory only when torch profiler dir is provided
-PROFILE_FLAG=""
-if [[ -n "${SGLANG_TORCH_PROFILER_DIR}" ]]; then
-    mkdir -p "${SGLANG_TORCH_PROFILER_DIR}" 2>/dev/null || true
-    export SGLANG_TORCH_PROFILER_DIR=${SGLANG_TORCH_PROFILER_DIR}
-    if [[ "${PROFILE_START_STEP}" != "0" ]]; then
-        echo "Warning: PROFILE_START_STEP is set to ${PROFILE_START_STEP}; Torch profiler only supports running from step 0. Setting to 0."
-        PROFILE_START_STEP=0
-    fi
-    PROFILE_FLAG="--profile --profile-num-steps $PROFILE_STOP_STEP"
-else
-    curl -X POST http://${head_node}:${head_port}/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": [\"CUDA_PROFILER\"]}"
-    mkdir -p "/logs/profiles" 2>/dev/null || true
-fi
-
 echo "Running profiler..."
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
 
+# Create profiling output directory only when torch profiler dir is provided
+ACTIVITIES=""
+if [[ -n "${SGLANG_TORCH_PROFILER_DIR}" ]]; then
+    ACTIVITIES='["GPU"]'
+    mkdir -p "${SGLANG_TORCH_PROFILER_DIR}" 2>/dev/null || true
+    export SGLANG_TORCH_PROFILER_DIR=${SGLANG_TORCH_PROFILER_DIR}
+else
+    ACTIVITIES='["CUDA_PROFILER"]'
+    mkdir -p "/logs/profiles" 2>/dev/null || true
+fi
+
 set -x
+
+curl -X POST http://${head_node}:${head_port}/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": $ACTIVITIES}"
+
 python3 -m sglang.bench_serving \
 --backend sglang \
 --model ${model_name} \
@@ -95,8 +93,18 @@ python3 -m sglang.bench_serving \
 --random-input-len $PROFILE_ISL \
 --random-output-len $PROFILE_OSL \
 --random-range-ratio 1 \
---warmup-request 10 \
-${PROFILE_FLAG}
+--warmup-request 10
+
+pip install lm-eval tenacity
+python -m lm_eval \
+--model local-completions \
+--tasks gsm8k \
+--model_args \
+base_url=http://${head_node}:${head_port}/v1/completions,\
+model=${model_name},\
+tokenized_requests=False,tokenizer_backend=None,\
+num_concurrent=${PROFILE_CONCURRENCY},timeout=6000,max_retries=1 \
+--limit 10
 
 exit_code=$?
 set +x
