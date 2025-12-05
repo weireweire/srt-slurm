@@ -71,7 +71,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S')"
 # Create profiling output directory only when torch profiler dir is provided
 ACTIVITIES=""
 if [[ -n "${SGLANG_TORCH_PROFILER_DIR}" ]]; then
-    ACTIVITIES='["GPU"]'
+    ACTIVITIES='["CPU", "GPU"]'
     mkdir -p "${SGLANG_TORCH_PROFILER_DIR}" 2>/dev/null || true
     export SGLANG_TORCH_PROFILER_DIR=${SGLANG_TORCH_PROFILER_DIR}
 else
