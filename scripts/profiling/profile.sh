@@ -7,7 +7,8 @@
 
 model_name="deepseek-ai/DeepSeek-R1"
 head_node="127.0.0.1"
-head_port=30000
+# In PD mode we benchmark via sglang router on port 8001
+head_port=8001
 
 # Parse arguments (same as sa-bench for consistency)
 n_prefill=$1
@@ -26,7 +27,6 @@ echo "  Decode GPUs: ${decode_gpus}"
 echo "  Total GPUs: ${total_gpus}"
 
 # Wait for server to be ready using inline wait function
-echo "Waiting for server at http://${head_node}:${head_port} to be ready..."
 wait_until_ready() {
     local SERVER_URL="$1"
     while true; do
@@ -42,7 +42,18 @@ wait_until_ready() {
         sleep 30
     done
 }
-wait_until_ready "http://${head_node}:${head_port}"
+
+# For PD disaggregation, only the prefill profiling job needs to wait for
+# the router (and generate traffic). Decode profiling only needs the
+# local decode server to be up so that /start_profile can be triggered.
+if [[ "${PROFILING_MODE}" == "prefill" ]]; then
+    echo "Waiting for router at http://${head_node}:${head_port} to be ready..."
+    wait_until_ready "http://${head_node}:${head_port}"
+fi
+
+# Also wait for the local prefill/decode server to be ready (port 30000)
+echo "Waiting for local ${PROFILING_MODE} server at http://127.0.0.1:30000 to be ready..."
+wait_until_ready "http://127.0.0.1:30000"
 
 # Determine profiling parameters strictly from environment 
 PROFILE_STEPS_ARG=""
@@ -81,30 +92,30 @@ fi
 
 set -x
 
-curl -X POST http://${head_node}:${head_port}/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": $ACTIVITIES}"
+# Start profiler on the local prefill/decode server
+curl -X POST http://127.0.0.1:30000/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": $ACTIVITIES}"
 
-python3 -m sglang.bench_serving \
---backend sglang \
---model ${model_name} \
---host ${head_node} --port ${head_port} \
---dataset-name random \
---max-concurrency $PROFILE_CONCURRENCY \
---num-prompts 128 \
---random-input-len $PROFILE_ISL \
---random-output-len $PROFILE_OSL \
---random-range-ratio 1 \
---warmup-request 10
+# Only the prefill profiling job needs to generate traffic through the router.
+if [[ "${PROFILING_MODE}" == "prefill" ]]; then
+    python3 -m sglang.bench_serving \
+    --backend sglang \
+    --model ${model_name} \
+    --host ${head_node} --port ${head_port} \
+    --dataset-name random \
+    --max-concurrency $PROFILE_CONCURRENCY \
+    --num-prompts 128 \
+    --random-input-len $PROFILE_ISL \
+    --random-output-len $PROFILE_OSL \
+    --random-range-ratio 1 \
+    --warmup-request 5
 
-pip install lm-eval tenacity
-python -m lm_eval \
---model local-completions \
---tasks gsm8k \
---model_args \
-base_url=http://${head_node}:${head_port}/v1/completions,\
-model=${model_name},\
-tokenized_requests=False,tokenizer_backend=None,\
-num_concurrent=${PROFILE_CONCURRENCY},timeout=6000,max_retries=1 \
---limit 10
+    pip install lm-eval tenacity > /dev/null
+    python -m lm_eval \
+    --model local-completions \
+    --tasks gsm8k \
+    --model_args base_url=http://${head_node}:${head_port}/v1/completions,model=${model_name},tokenized_requests=False,tokenizer_backend=None,num_concurrent=${PROFILE_CONCURRENCY},timeout=6000,max_retries=1 \
+    --limit 10
+fi
 
 exit_code=$?
 set +x

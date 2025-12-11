@@ -57,7 +57,7 @@ for i in "${!nodes[@]}"; do
 done
 
 {% endraw %}
-{% if enable_multiple_frontends %}
+{% if enable_multiple_frontends and not use_sglang_router %}
 {% raw %}
 # Multiple frontend architecture
 # Node 0: nginx only + prefill shard
@@ -129,7 +129,7 @@ PY
 {% endraw %}
 {% else %}
 {% raw %}
-# Traditional architecture - first prefill node handles everything
+# Traditional architecture - first prefill node handles everything or router if enabled
 MASTER_IP=$(get_node_ip "${nodes[0]}" "$SLURM_JOB_ID" "$NETWORK_INTERFACE")
 if [ -z "$MASTER_IP" ]; then
     echo "Error: Could not retrieve IP address for master host ${nodes[0]}"
@@ -142,7 +142,7 @@ echo "Master IP address: $MASTER_IP"
 
 # Compute leader nodes for each worker
 {% endraw %}
-{% if enable_multiple_frontends %}
+{% if enable_multiple_frontends and not use_sglang_router %}
 {% raw %}
 # With multiple frontends: keep offset 0; nginx coexists on node 0
 WORKER_NODE_OFFSET=0
@@ -183,7 +183,12 @@ ENROOT_ARGS="\
 {% raw %}
 WORKER_ARGS="--gpu_type ${GPU_TYPE} --gpus_per_node ${GPUS_PER_NODE} --master_ip ${MASTER_IP}"
 {% endraw %}
-{% if enable_multiple_frontends %}
+{% if use_sglang_router %}
+{% raw %}
+WORKER_ARGS="$WORKER_ARGS --use-sglang-router"
+{% endraw %}
+{% endif %}
+{% if enable_multiple_frontends and not use_sglang_router %}
 {% raw %}
 # Add multiple frontends flag for worker setup
 WORKER_ARGS="$WORKER_ARGS --multiple-frontends-enabled"
@@ -330,6 +335,38 @@ echo "srun $ENROOT_ARGS --jobid $SLURM_JOB_ID -w ${nodes[0]} --overlap --pty bas
 {% endif %}
 {% raw %}
 
+# Launch sglang router when enabled
+{% endraw %}{% if use_sglang_router %}{% raw %}
+echo "Launching sglang router on ${nodes[0]}"
+# Collect leader IPs for prefill and decode
+PREFILL_LEADER_IPS=()
+for idx in "${prefill_leaders[@]}"; do
+    node_name=${nodes[$idx]}
+    ip=$(get_node_ip "$node_name" "$SLURM_JOB_ID" "$NETWORK_INTERFACE")
+    PREFILL_LEADER_IPS+=("$ip")
+done
+DECODE_LEADER_IPS=()
+for idx in "${decode_leaders[@]}"; do
+    node_name=${nodes[$idx]}
+    ip=$(get_node_ip "$node_name" "$SLURM_JOB_ID" "$NETWORK_INTERFACE")
+    DECODE_LEADER_IPS+=("$ip")
+done
+
+ROUTER_ARGS="--pd-disaggregation"
+for ip in "${PREFILL_LEADER_IPS[@]}"; do
+    ROUTER_ARGS="$ROUTER_ARGS --prefill http://${ip}:30000"
+done
+for ip in "${DECODE_LEADER_IPS[@]}"; do
+    ROUTER_ARGS="$ROUTER_ARGS --decode http://${ip}:30000"
+done
+
+ROUTER_NODE=${nodes[0]}
+cmd="srun --overlap $ENROOT_ARGS --nodes=1 --ntasks=1 --nodelist=$ROUTER_NODE --output=${LOG_DIR}/${ROUTER_NODE}_router.out python -m sglang_router.launch_router $ROUTER_ARGS --host 0.0.0.0 --port 8001"
+echo "$cmd"
+$cmd &
+{% endraw %}{% endif %}
+{% raw %}
+
 echo ""
 echo "Make sure to cancel the job at the end:"
 echo "scancel $SLURM_JOB_ID"
@@ -349,7 +386,7 @@ srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w ${nodes[0]} --ou
 
 {% if profiler != 'none' %}
 {% raw %}
-# Torch profiling mode: run profiling on prefill and decode workers separately
+# Torch/NSYS profiling mode: run profiling on prefill and decode workers separately
 echo "Starting profiler..."
 
 # Get leader nodes for first prefill and decode workers
@@ -370,6 +407,27 @@ srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $DECODE_LEADER_N
     bash -c "PROFILING_MODE=decode {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endif %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
+
+{% raw %}
+echo "Starting profiler..."
+
+# Get leader nodes for first prefill and decode workers
+PREFILL_LEADER_NODE=${nodes[${prefill_leaders[0]}]}
+DECODE_LEADER_NODE=${nodes[${decode_leaders[0]}]}
+
+echo "Prefill profiling will run on: $PREFILL_LEADER_NODE"
+echo "Decode profiling will run on: $DECODE_LEADER_NODE"
+
+# Run profiling on prefill leader (drives traffic via router)
+srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $PREFILL_LEADER_NODE \
+    --output=${LOG_DIR}/profile_prefill.out --overlap \
+    bash -c "PROFILING_MODE=prefill {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/prefill {% endif %}{{ prefill_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+
+# Run profiling on decode leader (only triggers /start_profile, no extra traffic)
+srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $DECODE_LEADER_NODE \
+    --output=${LOG_DIR}/profile_decode.out  --overlap \
+    bash -c "PROFILING_MODE=decode {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endif %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+{% endraw %}
 
 {% if profiler != 'none' %}
 {% raw %}
