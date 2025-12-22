@@ -107,8 +107,8 @@ def build_sglang_command_from_yaml(
             "--host 0.0.0.0",
         ]
 
-    # Add dump-config-to flag if provided (not supported by sglang.launch_server)
-    if dump_config_path and not use_sglang_router:
+    # Add dump-config-to flag if provided (not supported by sglang.launch_server; not used in aggregated mode)
+    if dump_config_path and not use_launch_server and worker_type != "aggregated":
         cmd_parts.append(f"--dump-config-to {dump_config_path}")
 
     # Combine environment exports and command
