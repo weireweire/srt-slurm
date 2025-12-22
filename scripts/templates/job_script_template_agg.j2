@@ -9,7 +9,6 @@
 #SBATCH --account={{ account }}
 #SBATCH --time={{ time_limit }}
 #SBATCH --output={{ log_dir_prefix }}/%j_{{ agg_workers }}A_{{ timestamp }}/log.out
-#SBATCH --error={{ log_dir_prefix }}/%j_{{ agg_workers }}A_{{ timestamp }}/log.err
 #SBATCH --partition={{ partition }}
 
 # Constants
@@ -63,11 +62,17 @@ done
 # Node 2+: aggregated workers + optional additional frontends
 
 NGINX_NODE=${nodes[0]}
+{% endraw %}
 {% if total_nodes > 1 %}
+{% raw %}
 MASTER_NODE=${nodes[1]}
+{% endraw %}
 {% else %}
+{% raw %}
 MASTER_NODE=${nodes[0]}
+{% endraw %}
 {% endif %}
+{% raw %}
 MASTER_IP=$(get_node_ip "$MASTER_NODE" "$SLURM_JOB_ID" "$NETWORK_INTERFACE")
 if [ -z "$MASTER_IP" ]; then
     echo "Error: Could not retrieve IP address for master host $MASTER_NODE"
@@ -331,11 +336,25 @@ AGG_LEADER_NODE=${nodes[${agg_leaders[0]}]}
 
 echo "Aggregated profiling will run on: $AGG_LEADER_NODE"
 
+# Build aggregated leader IP list (comma-separated) for profiling
+agg_leader_ips=()
+for worker_idx in $(seq 0 $((AGG_WORKERS - 1))); do
+    leader_idx=${agg_leaders[$worker_idx]}
+    leader_node=${nodes[$leader_idx]}
+    leader_ip=$(get_node_ip "$leader_node" "$SLURM_JOB_ID" "$NETWORK_INTERFACE")
+    if [[ -z "$leader_ip" ]]; then
+        echo "Error: failed to get leader IP for aggregated worker $worker_idx ($leader_node)"
+        exit 1
+    fi
+    agg_leader_ips+=("$leader_ip")
+done
+PROFILE_AGG_IPS=$(IFS=','; echo "${agg_leader_ips[*]}")
+
 # Run profiling on first aggregated worker's leader node
 # Use "decode" mode for aggregated since it profiles the full generation pipeline
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $AGG_LEADER_NODE \
     --output=${LOG_DIR}/profile_aggregated.out --overlap \
-    bash -c "PROFILING_MODE=decode {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/decode {% endif %}{{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh 0 $AGG_WORKERS 0 $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "{% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles/aggregated {% endif %}{{ profiling_driver_env }} {{ aggregated_profile_env }}{% raw %} PROFILE_AGG_IPS=${PROFILE_AGG_IPS} HEAD_NODE=${agg_leader_ips[0]} HEAD_PORT=30000 /scripts/profiling/profile.sh 0 $AGG_WORKERS 0 $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
 

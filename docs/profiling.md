@@ -33,11 +33,25 @@ profiling:
 ```yaml
 profiling:
   type: "torch" # Required: "none", "torch", or "nsys"
-  isl: 1024 # Input sequence length
-  osl: 128 # Output sequence length
+
+  # Traffic generator parameters (required when profiling is enabled).
+  isl: 1024       # Input sequence length
+  osl: 128        # Output sequence length
   concurrency: 24 # Batch size for profiling workload
-  start_step: 0 # Step to start profiling (optional)
-  stop_step: 50 # Step to stop profiling (optional)
+
+  # Disaggregated mode: must set both prefill and decode sections.
+  prefill:
+    start_step: 0   # Step to start profiling for prefill node
+    stop_step: 50   # Step to stop profiling for prefill node
+
+  decode:
+    start_step: 0   # Step to start profiling for decode node
+    stop_step: 50   # Step to stop profiling for decode node
+
+  # Aggregated mode: must set aggregated section (and must NOT set prefill/decode).
+  # aggregated:
+  #   start_step: 0  # Step to start profiling for aggregated node
+  #   stop_step: 50  # Step to stop profiling for aggregated node
 ```
 
 The same profiling parameters are used for both prefill and decode workers in disaggregated mode.

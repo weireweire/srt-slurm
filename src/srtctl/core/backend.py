@@ -37,6 +37,36 @@ class SGLangBackend:
     def _profiling_type(self) -> str:
         return (self.config.get("profiling") or {}).get("type") or "none"
 
+    def _get_enable_config_dump(self) -> bool:
+        value = self.config.get("enable_config_dump")
+        if value is not None:
+            return bool(value)
+        return self._profiling_type() == "none"
+
+    @staticmethod
+    def _build_phase_steps_env_str(phase: str, defaults: dict, overrides: dict | None) -> str:
+        merged = dict(defaults)
+        if overrides:
+            merged.update({k: v for k, v in overrides.items() if v is not None})
+
+        parts: list[str] = []
+        if merged.get("start_step") is not None:
+            parts.append(f"PROFILE_{phase}_START_STEP={merged['start_step']}")
+        if merged.get("stop_step") is not None:
+            parts.append(f"PROFILE_{phase}_STOP_STEP={merged['stop_step']}")
+        return " ".join(parts)
+
+    @staticmethod
+    def _build_driver_env_str(cfg: dict) -> str:
+        parts: list[str] = []
+        if cfg.get("isl") is not None:
+            parts.append(f"PROFILE_ISL={cfg['isl']}")
+        if cfg.get("osl") is not None:
+            parts.append(f"PROFILE_OSL={cfg['osl']}")
+        if cfg.get("concurrency") is not None:
+            parts.append(f"PROFILE_CONCURRENCY={cfg['concurrency']}")
+        return " ".join(parts)
+
     def _config_to_flags(self, config: dict) -> list[str]:
         lines = []
         for key, value in sorted(config.items()):
@@ -133,6 +163,8 @@ class SGLangBackend:
         partition = self.slurm.get("partition") or get_srtslurm_setting("default_partition")
         time_limit = self.slurm.get("time_limit") or get_srtslurm_setting("default_time_limit", "04:00:00")
         gpus_per_node = get_srtslurm_setting("gpus_per_node", self.resources.get("gpus_per_node"))
+        network_interface = get_srtslurm_setting("network_interface", None)
+        gpu_type = self.backend_config.get("gpu_type", "h100")
 
         # Benchmark config
         benchmark_config = self.config.get("benchmark", {})
@@ -164,20 +196,18 @@ class SGLangBackend:
 
         # Paths
         srtctl_root = Path(get_srtslurm_setting("srtctl_root") or Path(srtctl.__file__).parent.parent.parent)
+        config_dir_path = srtctl_root / "configs"
+        log_dir_path = srtctl_root / "logs"
 
-        # Profiling env
         profiling_cfg = self.config.get("profiling") or {}
-        env_map = {
-            "isl": "PROFILE_ISL",
-            "osl": "PROFILE_OSL",
-            "concurrency": "PROFILE_CONCURRENCY",
-            "start_step": "PROFILE_START_STEP",
-            "stop_step": "PROFILE_STOP_STEP",
-        }
-        profile_env = " ".join(
-            f"{env}={profiling_cfg[k]}" for k, env in env_map.items() if profiling_cfg.get(k) is not None
-        )
-        profiler_mode = self._profiling_type()
+        profiling_defaults: dict = {}
+
+        prefill_profile_env = self._build_phase_steps_env_str("PREFILL", profiling_defaults, profiling_cfg.get("prefill"))
+        decode_profile_env = self._build_phase_steps_env_str("DECODE", profiling_defaults, profiling_cfg.get("decode"))
+        aggregated_profile_env = self._build_phase_steps_env_str("AGG", profiling_defaults, profiling_cfg.get("aggregated"))
+
+        profiling_driver_env = self._build_driver_env_str(profiling_cfg)
+        profiler_mode = profiling_cfg.get("type") or "none"
 
         template_vars = {
             "job_name": job_name,
@@ -192,11 +222,11 @@ class SGLangBackend:
             "agg_workers": agg_workers,
             "is_aggregated": is_aggregated,
             "model_dir": self.model.get("path"),
-            "config_dir": str(srtctl_root / "configs"),
+            "config_dir": str(config_dir_path),
             "container_image": self.model.get("container"),
             "gpus_per_node": gpus_per_node,
-            "network_interface": get_srtslurm_setting("network_interface"),
-            "gpu_type": self.backend_config.get("gpu_type", "h100"),
+            "network_interface": network_interface,
+            "gpu_type": gpu_type,
             "partition": partition,
             "enable_multiple_frontends": self.backend_config.get("enable_multiple_frontends", True),
             "num_additional_frontends": self.backend_config.get("num_additional_frontends", 9),
@@ -205,11 +235,13 @@ class SGLangBackend:
             "benchmark_type": bench_type,
             "benchmark_arg": parsable_config,
             "timestamp": timestamp,
-            "enable_config_dump": profiler_mode == "none" and self.config.get("enable_config_dump", True),
-            "log_dir_prefix": str(srtctl_root / "logs"),
+            "enable_config_dump": self._get_enable_config_dump(),
+            "log_dir_prefix": str(log_dir_path),
             "profiler": profiler_mode,
-            "prefill_profile_env": profile_env,
-            "decode_profile_env": profile_env,
+            "profiling_driver_env": profiling_driver_env,
+            "prefill_profile_env": prefill_profile_env,
+            "decode_profile_env": decode_profile_env,
+            "aggregated_profile_env": aggregated_profile_env,
             "setup_script": self.setup_script,
             "use_gpus_per_node_directive": get_srtslurm_setting("use_gpus_per_node_directive", True),
             "use_segment_sbatch_directive": get_srtslurm_setting("use_segment_sbatch_directive", True),

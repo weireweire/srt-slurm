@@ -19,14 +19,15 @@ resources:
 
 profiling:
   type: "torch"  # Options: "none", "torch", "nsys"
+  isl: 1024
+  osl: 128
+  concurrency: 1
   prefill:
-    isl: 1024
-    osl: 128
-    concurrency: 1
+    start_step: 0
+    stop_step: 50
   decode:
-    isl: 1024
-    osl: 128
-    concurrency: 1
+    start_step: 0
+    stop_step: 50
 
 backend:
   # Prefill-specific environment variables

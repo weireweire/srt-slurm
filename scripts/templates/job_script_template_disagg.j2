@@ -520,7 +520,7 @@ echo "Unified profiling will run on orchestrator node: $PROFILE_ORCHESTRATOR_NOD
 # Run a single profiling orchestrator that coordinates profiling across all leaders
 srun --nodes=1 --ntasks=1 $ENROOT_ARGS --jobid $SLURM_JOB_ID -w $PROFILE_ORCHESTRATOR_NODE \
     --output=${LOG_DIR}/profile_all.out --overlap \
-    bash -c "PROFILING_MODE=prefill PROFILE_PREFILL_IPS=${PREFILL_LEADER_IPS_STR} PROFILE_DECODE_IPS=${DECODE_LEADER_IPS_STR} {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles {% endif %}{{ prefill_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
+    bash -c "PROFILE_PREFILL_IPS=${PREFILL_LEADER_IPS_STR} PROFILE_DECODE_IPS=${DECODE_LEADER_IPS_STR} {% endraw %}{% if profiler == 'torch' %}SGLANG_TORCH_PROFILER_DIR=/logs/profiles {% endif %}{{ profiling_driver_env }} {{ prefill_profile_env }} {{ decode_profile_env }}{% raw %} /scripts/profiling/profile.sh $PREFILL_WORKERS $DECODE_WORKERS $PREFILL_GPUS $DECODE_GPUS $TOTAL_GPUS" &
 {% endraw %}
 {% endif %}
 

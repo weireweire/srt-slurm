@@ -182,17 +182,30 @@ class ProfilingType(str, Enum):
     NONE = "none"
 
 
+class ProfilingPhaseConfig(BaseModel):
+    """Profiling config for a single phase (prefill/decode/aggregated)."""
+
+    model_config = {"extra": "forbid"}
+
+    start_step: Optional[int] = Field(None, description="Profiling start step")
+    stop_step: Optional[int] = Field(None, description="Profiling stop step")
+
+
 class ProfilingConfig(BaseModel):
     """Profiling configuration."""
 
+    model_config = {"extra": "forbid"}
+
     type: ProfilingType = Field(ProfilingType.NONE, description="Profiling type")
-    # Unified profiling spec (used for both prefill and decode in PD
-    # disaggregation mode, or for aggregated mode).
+
     isl: Optional[int] = Field(None, description="Input sequence length")
     osl: Optional[int] = Field(None, description="Output sequence length")
     concurrency: Optional[int] = Field(None, description="Batch size / concurrency")
-    start_step: Optional[int] = Field(None, description="Profiling start step")
-    stop_step: Optional[int] = Field(None, description="Profiling stop step")
+
+    # Phase-specific profiling specs.
+    prefill: Optional[ProfilingPhaseConfig] = None
+    decode: Optional[ProfilingPhaseConfig] = None
+    aggregated: Optional[ProfilingPhaseConfig] = None
 
 
 class SGLangPrefillConfig(BaseModel):
@@ -344,6 +357,28 @@ class JobConfig(BaseModel):
                 raise ValueError(
                     f"Profiling mode requires single worker only. " f"Got agg_workers={self.resources.agg_workers}"
                 )
+
+        # Profiling config must match serving mode
+        has_prefill_prof = prof.prefill is not None
+        has_decode_prof = prof.decode is not None
+        has_agg_prof = prof.aggregated is not None
+
+        if prof.isl is None or prof.osl is None or prof.concurrency is None:
+            raise ValueError(
+                "profiling.isl/osl/concurrency must be set when profiling is enabled. "
+                f"Got isl={prof.isl}, osl={prof.osl}, concurrency={prof.concurrency}"
+            )
+
+        if is_disaggregated:
+            if has_agg_prof:
+                raise ValueError("Disaggregated mode only supports profiling.prefill/decode; profiling.aggregated is not allowed.")
+            if not has_prefill_prof or not has_decode_prof:
+                raise ValueError("Disaggregated mode requires both profiling.prefill and profiling.decode to be set when profiling is enabled.")
+        else:
+            if has_prefill_prof or has_decode_prof:
+                raise ValueError("Aggregated mode only supports profiling.aggregated; profiling.prefill/decode are not allowed.")
+            if not has_agg_prof:
+                raise ValueError("Aggregated mode requires profiling.aggregated to be set when profiling is enabled.")
 
     def _validate_resources(self) -> None:
         """Validate resource allocation and TP size constraints."""

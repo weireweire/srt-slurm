@@ -17,7 +17,6 @@ decode_gpus=$4
 total_gpus=$5
 
 echo "Torch Profiling Configuration:"
-echo "  Profiling mode: ${PROFILING_MODE}"
 echo "  Profiling dir: ${SGLANG_TORCH_PROFILER_DIR}"
 echo "  Prefill workers: ${n_prefill}"
 echo "  Decode workers: ${n_decode}"
@@ -42,9 +41,10 @@ wait_until_ready() {
     done
 }
 
-# Parse prefill/decode leader IP lists from environment (comma-separated)
+# Parse leader IP lists from environment (comma-separated)
 IFS=',' read -r -a PREFILL_IPS <<< "${PROFILE_PREFILL_IPS:-}"
 IFS=',' read -r -a DECODE_IPS <<< "${PROFILE_DECODE_IPS:-}"
+IFS=',' read -r -a AGG_IPS <<< "${PROFILE_AGG_IPS:-}"
 
 wait_all_workers_ready() {
     local ips=("$@")
@@ -57,20 +57,16 @@ wait_all_workers_ready() {
     done
 }
 
-# For PD disaggregation, wait for router once and then wait for all worker servers
-if [[ "${PROFILING_MODE}" == "prefill" ]]; then
-    echo "Waiting for router at http://${head_node}:${head_port} to be ready..."
-    wait_until_ready "http://${head_node}:${head_port}"
+if [[ "${#PREFILL_IPS[@]}" -gt 0 || "${#DECODE_IPS[@]}" -gt 0 || "${#AGG_IPS[@]}" -gt 0 ]]; then
+    echo "Waiting for all profiling workers to be ready..."
+    wait_all_workers_ready "${PREFILL_IPS[@]}" "${DECODE_IPS[@]}" "${AGG_IPS[@]}"
+else
+    echo "Error: node ip not set for profiling."
+    exit 1
 fi
 
-if [[ "${#PREFILL_IPS[@]}" -gt 0 || "${#DECODE_IPS[@]}" -gt 0 ]]; then
-    echo "Waiting for all profiling workers to be ready..."
-    wait_all_workers_ready "${PREFILL_IPS[@]}" "${DECODE_IPS[@]}"
-else
-    # Backward-compatible single-node behavior
-    echo "Waiting for local ${PROFILING_MODE} server at http://127.0.0.1:30000 to be ready..."
-    wait_until_ready "http://127.0.0.1:30000"
-fi
+echo "Waiting for serving endpoint at http://${head_node}:${head_port} to be ready..."
+wait_until_ready "http://${head_node}:${head_port}"
 
 # Determine profiling parameters strictly from environment 
 PROFILE_STEPS_ARG=""
@@ -81,16 +77,24 @@ if [[ -z "${PROFILE_ISL}" || -z "${PROFILE_OSL}" ]]; then
     echo "Error: isl and osl must be set for profiling."
     exit 1
 fi
+if [[ -z "${PROFILE_CONCURRENCY}" ]]; then
+    echo "Error: concurrency must be set for profiling."
+    exit 1
+fi
 
-# Configure profiling steps range; set defaults independently if missing
-if [[ -z "${PROFILE_START_STEP}" ]]; then
-    echo "Warning: PROFILE_START_STEP not set; defaulting to 0"
-    PROFILE_START_STEP=0
-fi
-if [[ -z "${PROFILE_STOP_STEP}" ]]; then
-    echo "Warning: PROFILE_STOP_STEP not set; defaulting to 50"
-    PROFILE_STOP_STEP=50
-fi
+get_phase_start_step() {
+    local phase="$1"
+    local var_name="PROFILE_${phase}_START_STEP"
+    local value="${!var_name}"
+    echo "${value}"
+}
+
+get_phase_stop_step() {
+    local phase="$1"
+    local var_name="PROFILE_${phase}_STOP_STEP"
+    local value="${!var_name}"
+    echo "${value}"
+}
 
 
 echo "Running profiler..."
@@ -111,53 +115,80 @@ set -x
 
 start_profile_on_worker() {
     local ip="$1"
+    local start_step="$2"
+    local stop_step="$3"
     if [[ -z "${ip}" ]]; then
         return
     fi
+    if [[ -z "${start_step}" ]]; then
+        echo "Warning: profiling start_step not set; defaulting to 0"
+        start_step=0
+    fi
+    if [[ -z "${stop_step}" ]]; then
+        echo "Warning: profiling stop_step not set; defaulting to 50"
+        stop_step=50
+    fi
+    local num_steps=$((stop_step - start_step))
+    if [[ "${num_steps}" -le 0 ]]; then
+        echo "Error: invalid profiling step range: start_step=${start_step} stop_step=${stop_step}"
+        return 1
+    fi
     echo "Starting profiling on http://${ip}:30000"
-    curl -X POST "http://${ip}:30000/start_profile" -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": $ACTIVITIES}"
+    curl -X POST "http://${ip}:30000/start_profile" -H "Content-Type: application/json" -d "{\"start_step\": \"${start_step}\", \"num_steps\": ${num_steps}, \"activities\": $ACTIVITIES}"
 }
 
-if [[ "${#PREFILL_IPS[@]}" -gt 0 || "${#DECODE_IPS[@]}" -gt 0 ]]; then
-    for ip in "${PREFILL_IPS[@]}"; do
-        start_profile_on_worker "${ip}"
-    done
-    for ip in "${DECODE_IPS[@]}"; do
-        start_profile_on_worker "${ip}"
-    done
-else
-    # Fallback to local single-node profiling
-    echo "Starting profiling on local server http://127.0.0.1:30000"
-    curl -X POST http://127.0.0.1:30000/start_profile -H "Content-Type: application/json" -d "{\"start_step\": \"$PROFILE_START_STEP\", \"num_steps\": $((PROFILE_STOP_STEP-PROFILE_START_STEP)), \"activities\": $ACTIVITIES}"
-fi
+slow_down_first_decode_worker() {
+    local ip="$1"
+    if [[ -z "${ip}" ]]; then
+        return
+    fi
+    echo "Slowing down first decode worker at http://${ip}:30000"
+    curl -sS -X POST "http://${ip}:30000/slow_down" -H "Content-Type: application/json" -d '{"forward_sleep_time": 120.0}' || true
+}
 
-# Only the prefill profiling job needs to generate traffic through the router.
-if [[ "${PROFILING_MODE}" == "prefill" ]]; then
-    python3 -m sglang.bench_serving \
-    --backend sglang \
-    --model ${model_name} \
-    --host ${head_node} --port ${head_port} \
-    --dataset-name random \
-    --max-concurrency $PROFILE_CONCURRENCY \
-    --num-prompts 128 \
-    --random-input-len $PROFILE_ISL \
-    --random-output-len $PROFILE_OSL \
-    --random-range-ratio 1 \
-    --warmup-request 5
+prefill_start_step="$(get_phase_start_step PREFILL)"
+prefill_stop_step="$(get_phase_stop_step PREFILL)"
+decode_start_step="$(get_phase_start_step DECODE)"
+decode_stop_step="$(get_phase_stop_step DECODE)"
+agg_start_step="$(get_phase_start_step AGG)"
+agg_stop_step="$(get_phase_stop_step AGG)"
 
-    pip install lm-eval tenacity > /dev/null
-    python -m lm_eval \
-    --model local-completions \
-    --tasks gsm8k \
-    --model_args base_url=http://${head_node}:${head_port}/v1/completions,model=${model_name},tokenized_requests=False,tokenizer_backend=None,num_concurrent=${PROFILE_CONCURRENCY},timeout=6000,max_retries=1 \
-    --limit 10
-fi
+for ip in "${PREFILL_IPS[@]}"; do
+    start_profile_on_worker "${ip}" "${prefill_start_step}" "${prefill_stop_step}"
+done
+# slow_down_first_decode_worker "${DECODE_IPS[0]}"
+for ip in "${DECODE_IPS[@]}"; do
+    start_profile_on_worker "${ip}" "${decode_start_step}" "${decode_stop_step}"
+done
+for ip in "${AGG_IPS[@]}"; do
+    start_profile_on_worker "${ip}" "${agg_start_step}" "${agg_stop_step}"
+done
+
+
+python3 -m sglang.bench_serving \
+--backend sglang \
+--model ${model_name} \
+--host ${head_node} --port ${head_port} \
+--dataset-name random \
+--max-concurrency $PROFILE_CONCURRENCY \
+--num-prompts 128 \
+--random-input-len $PROFILE_ISL \
+--random-output-len $PROFILE_OSL \
+--random-range-ratio 1 \
+--warmup-request 0
+
+pip install lm-eval tenacity > /dev/null
+python -m lm_eval \
+--model local-completions \
+--tasks gsm8k \
+--model_args base_url=http://${head_node}:${head_port}/v1/completions,model=${model_name},tokenized_requests=False,tokenizer_backend=None,num_concurrent=${PROFILE_CONCURRENCY},timeout=6000,max_retries=1 \
+--limit 10
 
 exit_code=$?
 set +x
 
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
-echo "Torch profiling completed for ${PROFILING_MODE} mode with exit code ${exit_code}"
+echo "Torch profiling completed with exit code ${exit_code}"
 echo "Profiling results saved to ${SGLANG_TORCH_PROFILER_DIR}"
 
 exit ${exit_code}
