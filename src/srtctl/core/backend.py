@@ -164,7 +164,7 @@ class SGLangBackend:
         time_limit = self.slurm.get("time_limit") or get_srtslurm_setting("default_time_limit", "04:00:00")
         gpus_per_node = get_srtslurm_setting("gpus_per_node", self.resources.get("gpus_per_node"))
         network_interface = get_srtslurm_setting("network_interface", None)
-        gpu_type = self.backend_config.get("gpu_type", "h100")
+        gpu_type = self.resources.get("gpu_type", "h100")
 
         # Benchmark config
         benchmark_config = self.config.get("benchmark", {})
